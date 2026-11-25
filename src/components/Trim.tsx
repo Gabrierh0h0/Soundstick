@@ -15,22 +15,27 @@ type Props = {
   maxLen: number
   peaks: number[] | null
   accent?: 'lime' | 'cyan'
-  onChange: (start: number, end: number) => void
+  /** `kind` indica qué se está moviendo, para mostrar el cuadro de ese punto. */
+  onChange: (start: number, end: number, kind: Handle) => void
+  /** Se llama al empezar y al terminar de arrastrar, para pausar y reanudar la reproducción. */
+  onDragStart?: () => void
+  onDragEnd?: () => void
 }
 
-export function Trim({ label, duration, start, end, time, maxLen, peaks, accent = 'lime', onChange }: Props) {
+export function Trim({ label, duration, start, end, time, maxLen, peaks, accent = 'lime', onChange, onDragStart, onDragEnd }: Props) {
   const { t } = useT()
   const track = useRef<HTMLDivElement>(null)
   const drag = useRef<{ kind: Handle; x0: number; start: number; end: number } | null>(null)
 
   const apply = (kind: Handle, base: { start: number; end: number }, delta: number) => {
     const next = moveWindow(kind, base, delta, duration, LIMITS.minSeconds, maxLen)
-    onChange(next.start, next.end)
+    onChange(next.start, next.end, kind)
   }
 
   const down = (kind: Handle) => (e: PointerEvent<HTMLElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId)
     drag.current = { kind, x0: e.clientX, start, end }
+    onDragStart?.()
   }
   const move = (e: PointerEvent<HTMLElement>) => {
     const d = drag.current
@@ -39,7 +44,9 @@ export function Trim({ label, duration, start, end, time, maxLen, peaks, accent 
     apply(d.kind, d, ((e.clientX - d.x0) / width) * duration)
   }
   const up = () => {
+    if (!drag.current) return
     drag.current = null
+    onDragEnd?.()
   }
   const key = (kind: Handle) => (e: KeyboardEvent<HTMLElement>) => {
     const step = e.shiftKey ? 1 : 0.1

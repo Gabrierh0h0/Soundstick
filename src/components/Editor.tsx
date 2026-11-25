@@ -7,7 +7,7 @@ import { saveSticker } from '../lib/library'
 import { overlayBlob, overlayDataUrl, frameBlob } from '../lib/overlay'
 import { DEFAULT_FX, defaultOrigVolume, needsAudio, type AudioClip, type Effects, type Mode, type Visual } from '../lib/project'
 import { download, shareFile } from '../lib/share'
-import { clampWindow, fmt, initialWindow } from '../lib/trim'
+import { clampWindow, fmt, initialWindow, type Handle } from '../lib/trim'
 import { usePlayback } from '../hooks/usePlayback'
 import { clampFraming, framingToCrop, Preview, type Framing } from './Preview'
 import { Tools } from './Tools'
@@ -199,15 +199,24 @@ export function Editor({ onHelp }: { onHelp: () => void }) {
     }
   }
 
-  const changeV = (start: number, end: number) => {
-    if (start !== vWin.start) pb.seek('video', start)
-    else pb.seek('video', Math.max(start, end - 0.1))
+  // Mientras se arrastra un recorte todo se pausa: el video muestra el cuadro del punto que se mueve
+  // y el audio calla; al soltar, si estaba sonando, vuelve a empezar desde el inicio nuevo.
+  const resume = useRef(false)
+  const dragStart = () => {
+    resume.current = pb.playing
+    pb.pause()
+  }
+  const dragEnd = () => {
+    if (resume.current) pb.restart()
+    resume.current = false
+  }
+  const changeV = (start: number, end: number, kind: Handle) => {
+    pb.seek('video', kind === 'end' ? Math.max(start, end - 0.05) : start)
     setVWin({ start, end })
     touch()
   }
-  const changeA = (start: number, end: number) => {
-    if (start !== aWin.start) pb.seek('audio', start)
-    else pb.seek('audio', Math.max(start, end - 0.1))
+  const changeA = (start: number, end: number, kind: Handle) => {
+    pb.seek('audio', kind === 'end' ? Math.max(start, end - 0.05) : start)
     setAWin({ start, end })
     touch()
   }
@@ -359,7 +368,7 @@ export function Editor({ onHelp }: { onHelp: () => void }) {
 
       {hasVideo && visual && (
         <div className="trim-block">
-          <Trim label={t('trimVideo')} duration={visual.duration} start={vWin.start} end={vWin.end} time={pb.timeV} maxLen={maxLen} peaks={vPeaks} onChange={changeV} />
+          <Trim label={t('trimVideo')} duration={visual.duration} start={vWin.start} end={vWin.end} time={pb.timeV} maxLen={maxLen} peaks={vPeaks} onChange={changeV} onDragStart={dragStart} onDragEnd={dragEnd} />
           <p className="readout">
             <span>{fmt(vWin.start)} → {fmt(vWin.end)}</span> {t('trimLen', { len: fmt(vLen), max: fmt(maxLen) })} · {t('fileSize', { mb: mb(visual.file.size), max: LIMITS.maxVideoMB })}
             <button type="button" className="change" onClick={() => visInput.current?.click()}>{t('changeVisual')}</button>
@@ -385,7 +394,7 @@ export function Editor({ onHelp }: { onHelp: () => void }) {
           )}
           {audio && (
             <div className="trim-block">
-              <Trim label={t('trimAudio')} accent="cyan" duration={audio.duration} start={aWin.start} end={aWin.end} time={pb.timeA} maxLen={maxLen} peaks={audio.peaks} onChange={changeA} />
+              <Trim label={t('trimAudio')} accent="cyan" duration={audio.duration} start={aWin.start} end={aWin.end} time={pb.timeA} maxLen={maxLen} peaks={audio.peaks} onChange={changeA} onDragStart={dragStart} onDragEnd={dragEnd} />
               <p className="readout">
                 <span>{fmt(aWin.start)} → {fmt(aWin.end)}</span> {t('trimLen', { len: fmt(aLen), max: fmt(maxLen) })}
                 {audio.kind === 'file' && <button type="button" className="change" onClick={() => audInput.current?.click()}>{t('changeAudio')}</button>}

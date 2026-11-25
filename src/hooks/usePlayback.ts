@@ -105,8 +105,21 @@ export function usePlayback({ hasVideo, hasAudio, vWin, aWin, speed, volOrig, vo
   /** Salta a un instante (solo con la reproducción en pausa) para ver el cuadro del recorte. */
   const seek = useCallback((which: 'video' | 'audio', t: number) => {
     const el = which === 'video' ? videoRef.current : audioRef.current
-    if (el && el.paused) el.currentTime = t
+    if (!el || !el.paused) return
+    el.currentTime = t
+    if (which === 'video') setTimeV(t)
+    else setTimeA(t)
   }, [videoRef, audioRef])
 
-  return { playing, timeV, timeA, toggle, pause, seek }
+  /** Vuelve a empezar desde el inicio de cada tramo (tras terminar de editar). */
+  const restart = useCallback(() => {
+    const v = videoRef.current
+    const a = audioRef.current
+    if (v && hasVideo) v.currentTime = vWin.start
+    if (a && hasAudio) a.currentTime = aWin.start
+    void v?.play().catch(() => {})
+    void a?.play().catch(() => {})
+  }, [videoRef, audioRef, hasVideo, hasAudio, vWin.start, aWin.start])
+
+  return { playing, timeV, timeA, toggle, pause, seek, restart }
 }
