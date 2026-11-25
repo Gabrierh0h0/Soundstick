@@ -26,12 +26,13 @@ type Props = {
   playing: boolean
   canPlay: boolean
   onTogglePlay: () => void
-  label: string
+  /** Etiquetas flotantes: tiempo (arriba izquierda), tipo (arriba derecha) y medida (abajo izquierda). */
+  tags: { tl: string; tr: string; bl: string }
   /** Texto superpuesto (PNG transparente) para ver cómo quedará. */
   overlay: string | null
 }
 
-export function Preview({ kind, url, width, height, framing, onFraming, videoRef, playing, canPlay, onTogglePlay, label, overlay }: Props) {
+export function Preview({ kind, url, width, height, framing, onFraming, videoRef, playing, canPlay, onTogglePlay, tags, overlay }: Props) {
   const { t } = useT()
   const box = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState(354)
@@ -78,7 +79,9 @@ export function Preview({ kind, url, width, height, framing, onFraming, videoRef
         )}
       </div>
       {overlay && <img className="stage-overlay" src={overlay} alt="" draggable={false} />}
-      <span className="stage-label">{label}</span>
+      <span className="tag tl">{tags.tl}</span>
+      <span className="tag tr">{tags.tr}</span>
+      <span className="tag bl">{tags.bl}</span>
       <button type="button" className="play" onClick={onTogglePlay} disabled={!canPlay} aria-label={playing ? t('pause') : t('play')}>
         <i className={playing ? 'pause' : 'tri'} />
       </button>

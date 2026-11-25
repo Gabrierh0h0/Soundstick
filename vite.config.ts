@@ -11,8 +11,8 @@ export default defineConfig({
         name: 'Soundstick',
         short_name: 'Soundstick',
         description: 'Stickers con sonido para WhatsApp. Sticker with sound maker for WhatsApp.',
-        theme_color: '#000000',
-        background_color: '#000000',
+        theme_color: '#4b1a8c',
+        background_color: '#7d5fb5',
         display: 'standalone',
         orientation: 'portrait',
         icons: [

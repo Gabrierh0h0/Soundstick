@@ -11,6 +11,7 @@ import { clampWindow, fmt, initialWindow, type Handle } from '../lib/trim'
 import { usePlayback } from '../hooks/usePlayback'
 import { clampFraming, framingToCrop, Preview, type Framing } from './Preview'
 import { Tools } from './Tools'
+import { ModeIcon } from './Icons'
 import { Trim } from './Trim'
 import { VoiceRecorder } from './VoiceRecorder'
 
@@ -311,7 +312,7 @@ export function Editor({ onHelp }: { onHelp: () => void }) {
 
   const busy = phase !== 'idle'
   const ready = canExport && armedKey !== '' && armedKey === keyOf()
-  const label = `${LIMITS.outputSize}×${LIMITS.outputSize} · ${fmt(outLen)} s`
+  const tags = visual ? { tl: `${fmt(outLen)} s${fx.speed !== 1 ? ` ${fx.speed}x` : ''}`, tr: t(visual.kind === 'video' ? 'tagVideo' : 'tagImage'), bl: `${LIMITS.outputSize}x${LIMITS.outputSize}` } : { tl: '', tr: '', bl: '' }
   const visAccept = mode === 'video' || mode === 'videoAudio' ? 'video/*' : mode === 'imageAudio' ? 'image/png,image/jpeg,image/webp' : 'image/png,image/jpeg,image/webp,video/*'
   const pickTitle: Key = mode === 'imageAudio' ? 'pickImage' : mode === 'voice' ? 'pickVisualVoice' : 'pickVideo'
   const pickHint = mode === 'imageAudio' ? t('pickHintImage', { mb: LIMITS.maxImageMB }) : mode === 'voice' ? t('pickHintVoice') : t('pickHintVideo', { mb: LIMITS.maxVideoMB, s: LIMITS.maxSeconds })
@@ -325,13 +326,16 @@ export function Editor({ onHelp }: { onHelp: () => void }) {
 
       <div className="sources" role="group">
         {MODES.map((m) => (
-          <button key={m.id} type="button" className={mode === m.id ? 'on' : ''} aria-pressed={mode === m.id} onClick={() => setMode(m.id)}>{t(m.label)}</button>
+          <button key={m.id} type="button" className={mode === m.id ? 'on' : ''} aria-pressed={mode === m.id} onClick={() => setMode(m.id)}>
+            <ModeIcon mode={m.id} />
+            <span>{t(m.label)}</span>
+          </button>
         ))}
       </div>
 
       {!visual ? (
         <button type="button" className={`stage pick${over ? ' over' : ''}`} aria-busy={reading} disabled={reading} onClick={() => visInput.current?.click()}>
-          <i className="plus" aria-hidden="true" />
+          <i className="orb" aria-hidden="true"><b>hola</b></i>
           <strong>{reading ? t('loadingFile') : t(pickTitle)}</strong>
           {!reading && <small>{pickHint}</small>}
         </button>
@@ -348,7 +352,7 @@ export function Editor({ onHelp }: { onHelp: () => void }) {
             playing={pb.playing}
             canPlay={hasVideo || !!audio}
             onTogglePlay={pb.toggle}
-            label={label}
+            tags={tags}
             overlay={overlay}
           />
           <label className="zoom">
@@ -370,13 +374,13 @@ export function Editor({ onHelp }: { onHelp: () => void }) {
         <div className="trim-block">
           <Trim label={t('trimVideo')} duration={visual.duration} start={vWin.start} end={vWin.end} time={pb.timeV} maxLen={maxLen} peaks={vPeaks} onChange={changeV} onDragStart={dragStart} onDragEnd={dragEnd} />
           <p className="readout">
-            <span>{fmt(vWin.start)} → {fmt(vWin.end)}</span> {t('trimLen', { len: fmt(vLen), max: fmt(maxLen) })} · {t('fileSize', { mb: mb(visual.file.size), max: LIMITS.maxVideoMB })}
+            {t('trimLen', { len: fmt(vLen), max: fmt(maxLen) })}, {t('fileSize', { mb: mb(visual.file.size), max: LIMITS.maxVideoMB })}
             <button type="button" className="change" onClick={() => visInput.current?.click()}>{t('changeVisual')}</button>
           </p>
         </div>
       )}
       {visual && !hasVideo && (
-        <p className="readout"><span>{visual.file.name}</span><button type="button" className="change" onClick={() => visInput.current?.click()}>{t('changeVisual')}</button></p>
+        <p className="readout">{visual.file.name}<button type="button" className="change" onClick={() => visInput.current?.click()}>{t('changeVisual')}</button></p>
       )}
 
       {needsAudio(mode) && (
@@ -396,7 +400,7 @@ export function Editor({ onHelp }: { onHelp: () => void }) {
             <div className="trim-block">
               <Trim label={t('trimAudio')} accent="cyan" duration={audio.duration} start={aWin.start} end={aWin.end} time={pb.timeA} maxLen={maxLen} peaks={audio.peaks} onChange={changeA} onDragStart={dragStart} onDragEnd={dragEnd} />
               <p className="readout">
-                <span>{fmt(aWin.start)} → {fmt(aWin.end)}</span> {t('trimLen', { len: fmt(aLen), max: fmt(maxLen) })}
+                {t('trimLen', { len: fmt(aLen), max: fmt(maxLen) })}
                 {audio.kind === 'file' && <button type="button" className="change" onClick={() => audInput.current?.click()}>{t('changeAudio')}</button>}
               </p>
             </div>
@@ -404,7 +408,7 @@ export function Editor({ onHelp }: { onHelp: () => void }) {
         </div>
       )}
 
-      {visual && <Tools fx={fx} onFx={onFx} showOrig={showOrig} showAdded={needsAudio(mode)} addedLabel={addedLabel} outLen={outLen} />}
+      {visual && <Tools onHelp={onHelp} fx={fx} onFx={onFx} showOrig={showOrig} showAdded={needsAudio(mode)} addedLabel={addedLabel} outLen={outLen} />}
 
       <div className="actions">
         <button type="button" className="mg" disabled={!canExport || busy} onClick={onSave}>{t('save')}</button>

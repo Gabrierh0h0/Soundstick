@@ -1,7 +1,7 @@
 import { useRef, type KeyboardEvent, type PointerEvent } from 'react'
 import { useT } from '../lib/i18n'
 import { LIMITS } from '../lib/limits'
-import { moveWindow, type Handle } from '../lib/trim'
+import { fmt, moveWindow, type Handle } from '../lib/trim'
 
 type Props = {
   /** Texto accesible y rótulo visible de la pista ("video" o "audio"). */
@@ -58,11 +58,19 @@ export function Trim({ label, duration, start, end, time, maxLen, peaks, accent 
 
   const pct = (s: number) => `${(s / duration) * 100}%`
   const bars = peaks ?? Array.from({ length: 64 }, () => 0.12)
+  // Regla de segundos, con a lo sumo ~8 marcas para que no se amontonen.
+  const step = Math.max(1, Math.ceil(duration / 8))
+  const marks = Array.from({ length: Math.floor(duration / step) + 1 }, (_, i) => i * step).filter((m) => m < duration)
 
   return (
     <div className={`trim ${accent}`}>
       <span className="trim-label">{label}</span>
+      <div className="ed">
+      <div className="ruler" aria-hidden="true">
+        {marks.map((m) => <s key={m} style={{ left: pct(m) }}>{m}s</s>)}
+      </div>
       <div className="trim-track" ref={track} role="group" aria-label={peaks ? label : `${label} · ${t('noWave')}`}>
+        <div className="sel-bg" style={{ left: pct(start), width: `${((end - start) / duration) * 100}%` }} aria-hidden="true" />
         <div className="wave" aria-hidden="true">
           {bars.map((h, i) => {
             const at = ((i + 0.5) / bars.length) * duration
@@ -108,6 +116,12 @@ export function Trim({ label, duration, start, end, time, maxLen, peaks, accent 
           onPointerCancel={up}
           onKeyDown={key('end')}
         />
+      </div>
+      <div className="cells">
+        <span><b>{t('trimFrom')}</b>{fmt(start)} s</span>
+        <span><b>{t('trimTo')}</b>{fmt(end)} s</span>
+        <span><b>{t('trimSpan')}</b>{fmt(end - start)} s</span>
+      </div>
       </div>
     </div>
   )

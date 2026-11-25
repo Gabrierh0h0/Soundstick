@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "gradient-text",
+        "value": "*",
+        "files": [
+          "src/index.css"
+        ],
+        "createdAt": "2026-11-25T20:28:38.782Z",
+        "reason": "user confirmed: WordArt-style soundstick logo, explicitly asked to restore it"
+      }
+    ]
+  }
+}
