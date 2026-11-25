@@ -26,7 +26,7 @@ export type Crop = { x: number; y: number; side: number }
 
 export type ExportOptions = {
   /** Video fuente (se recorta con `crop`) o, para imágenes, el cuadro 512x512 ya dibujado. */
-  visual: { kind: 'video'; file: File; start: number; crop: Crop } | { kind: 'image'; frame: Blob }
+  visual: { kind: 'video'; file: File; start: number; crop: Crop; whole?: { bg: string } } | { kind: 'image'; frame: Blob }
   /** Audio aparte (archivo o voz) y desde dónde se usa. */
   audio: { file: File; start: number } | null
   /** Segundos de material fuente que entran al sticker (antes de aplicar la velocidad). */
@@ -99,11 +99,26 @@ export async function exportSticker(o: ExportOptions): Promise<Blob> {
     // ── Video ──
     const size = LIMITS.outputSize
     const chain: string[] = []
-    const base =
-      o.visual.kind === 'video'
-        ? `crop=${even(o.visual.crop.side)}:${even(o.visual.crop.side)}:${Math.round(o.visual.crop.x)}:${Math.round(o.visual.crop.y)},scale=${size}:${size}:flags=lanczos`
-        : `scale=${size}:${size}`
-    chain.push(`[${idx.visual}:v]${base},setsar=1,fps=30,format=yuv420p[v0]`)
+    const src = `[${idx.visual}:v]`
+    if (o.visual.kind === 'video' && o.visual.whole) {
+      // Todo el video dentro del cuadrado; lo que sobra se rellena con un color o con el mismo video borroso.
+      const fg = `scale=${size}:${size}:force_original_aspect_ratio=decrease:flags=lanczos`
+      const bg = o.visual.whole.bg
+      if (bg === 'blur') {
+        chain.push(`${src}split=2[sa][sb]`)
+        chain.push(`[sa]scale=${size}:${size}:force_original_aspect_ratio=increase,crop=${size}:${size},boxblur=16:2[sbg]`)
+        chain.push(`[sb]${fg}[sfg]`)
+        chain.push('[sbg][sfg]overlay=(W-w)/2:(H-h)/2,setsar=1,fps=30,format=yuv420p[v0]')
+      } else {
+        chain.push(`${src}${fg},pad=${size}:${size}:(ow-iw)/2:(oh-ih)/2:color=0x${bg.replace('#', '')},setsar=1,fps=30,format=yuv420p[v0]`)
+      }
+    } else {
+      const base =
+        o.visual.kind === 'video'
+          ? `crop=${even(o.visual.crop.side)}:${even(o.visual.crop.side)}:${Math.round(o.visual.crop.x)}:${Math.round(o.visual.crop.y)},scale=${size}:${size}:flags=lanczos`
+          : `scale=${size}:${size}`
+      chain.push(`${src}${base},setsar=1,fps=30,format=yuv420p[v0]`)
+    }
     let v = 'v0'
     if (o.overlay) {
       chain.push(`[${v}][${idx.overlay}:v]overlay=0:0:format=auto,format=yuv420p[v1]`)

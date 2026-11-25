@@ -3,7 +3,7 @@ import type { Effects } from './project'
 
 type TextStyle = Pick<Effects, 'text' | 'textPos' | 'textColor' | 'textSize'>
 
-const FONT = '"Hanken Grotesk", system-ui, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif'
+const FONT = '"Oxanium", system-ui, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif'
 
 function wrap(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
   const lines: string[] = []
@@ -27,7 +27,7 @@ function draw(style: TextStyle): HTMLCanvasElement | null {
   const size = LIMITS.outputSize
   const canvas = Object.assign(document.createElement('canvas'), { width: size, height: size })
   const ctx = canvas.getContext('2d')!
-  ctx.font = `600 ${style.textSize}px ${FONT}`
+  ctx.font = `700 ${style.textSize}px ${FONT}`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.lineJoin = 'round'
@@ -52,7 +52,7 @@ export const overlayDataUrl = (style: TextStyle): string | null => draw(style)?.
 
 /** PNG transparente con el texto, listo para superponer en ffmpeg. Soporta emojis. */
 export async function overlayBlob(style: TextStyle): Promise<Blob | null> {
-  await document.fonts.load(`600 ${style.textSize}px "Hanken Grotesk"`).catch(() => {})
+  await document.fonts.load(`700 ${style.textSize}px "Oxanium"`).catch(() => {})
   const canvas = draw(style)
   if (!canvas) return null
   return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
@@ -67,5 +67,27 @@ export async function frameBlob(img: HTMLImageElement, cx: number, cy: number, s
   ctx.fillRect(0, 0, size, size)
   ctx.imageSmoothingQuality = 'high'
   ctx.drawImage(img, cx - side / 2, cy - side / 2, side, side, 0, 0, size, size)
+  return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('canvas'))), 'image/png'))
+}
+
+/** Cuadro 512x512 con la imagen completa y el sobrante relleno (borroso o de un color). */
+export async function wholeFrameBlob(img: HTMLImageElement, bg: string): Promise<Blob> {
+  const size = LIMITS.outputSize
+  const canvas = Object.assign(document.createElement('canvas'), { width: size, height: size })
+  const ctx = canvas.getContext('2d')!
+  ctx.imageSmoothingQuality = 'high'
+  const w = img.naturalWidth
+  const h = img.naturalHeight
+  if (bg === 'blur') {
+    const cover = size / Math.min(w, h)
+    ctx.filter = 'blur(14px)'
+    ctx.drawImage(img, (size - w * cover) / 2 - 20, (size - h * cover) / 2 - 20, w * cover + 40, h * cover + 40)
+    ctx.filter = 'none'
+  } else {
+    ctx.fillStyle = bg
+    ctx.fillRect(0, 0, size, size)
+  }
+  const fit = size / Math.max(w, h)
+  ctx.drawImage(img, (size - w * fit) / 2, (size - h * fit) / 2, w * fit, h * fit)
   return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('canvas'))), 'image/png'))
 }

@@ -28,11 +28,13 @@ type Props = {
   onTogglePlay: () => void
   /** Etiquetas flotantes: tiempo (arriba izquierda), tipo (arriba derecha) y medida (abajo izquierda). */
   tags: { tl: string; tr: string; bl: string }
+  fit: 'fill' | 'whole'
+  bg: string
   /** Texto superpuesto (PNG transparente) para ver cómo quedará. */
   overlay: string | null
 }
 
-export function Preview({ kind, url, width, height, framing, onFraming, videoRef, playing, canPlay, onTogglePlay, tags, overlay }: Props) {
+export function Preview({ kind, url, width, height, framing, onFraming, videoRef, playing, canPlay, onTogglePlay, tags, overlay, fit, bg }: Props) {
   const { t } = useT()
   const box = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState(354)
@@ -56,7 +58,32 @@ export function Preview({ kind, url, width, height, framing, onFraming, videoRef
     top: size / 2 - framing.cy * scale,
   }
 
+  const whole = fit === 'whole'
+  const place = (s: number) => ({ width: width * s, height: height * s, left: (size - width * s) / 2, top: (size - height * s) / 2 })
+  const mainStyle = whole ? place(size / Math.max(width, height)) : style
+  const blurStyle = { ...place(size / Math.min(width, height)), filter: 'blur(14px)', transform: 'scale(1.15)' }
+  const bgVideo = useRef<HTMLVideoElement>(null)
+
+  // El fondo borroso de un video es una copia muda que sigue al video principal.
+  const wantBlur = whole && bg === 'blur'
+  useEffect(() => {
+    if (!wantBlur || kind !== 'video') return
+    let raf = 0
+    const tick = () => {
+      const m = videoRef.current
+      const b = bgVideo.current
+      if (m && b) {
+        if (Math.abs(b.currentTime - m.currentTime) > 0.12) b.currentTime = m.currentTime
+        if (m.paused !== b.paused) void (m.paused ? b.pause() : b.play().catch(() => {}))
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [wantBlur, kind, videoRef])
+
   const down = (e: PointerEvent<HTMLDivElement>) => {
+    if (whole) return
     e.currentTarget.setPointerCapture(e.pointerId)
     drag.current = { x: e.clientX, y: e.clientY, cx: framing.cx, cy: framing.cy }
   }
@@ -70,12 +97,13 @@ export function Preview({ kind, url, width, height, framing, onFraming, videoRef
   }
 
   return (
-    <div className="stage" ref={box}>
-      <div className="stage-pan" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} title={t('framingHint')}>
+    <div className="stage" ref={box} style={whole && bg !== 'blur' ? { background: bg } : undefined}>
+      {wantBlur && (kind === 'video' ? <video ref={bgVideo} src={url} muted playsInline preload="auto" style={blurStyle} aria-hidden="true" /> : <img src={url} alt="" draggable={false} style={blurStyle} />)}
+      <div className={`stage-pan${whole ? ' still' : ''}`} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} title={t('framingHint')}>
         {kind === 'video' ? (
-          <video ref={videoRef} src={url} playsInline preload="auto" style={style} />
+          <video ref={videoRef} src={url} playsInline preload="auto" style={mainStyle} />
         ) : (
-          <img src={url} alt="" draggable={false} style={style} />
+          <img src={url} alt="" draggable={false} style={mainStyle} />
         )}
       </div>
       {overlay && <img className="stage-overlay" src={overlay} alt="" draggable={false} />}

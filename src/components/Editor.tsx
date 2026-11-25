@@ -4,7 +4,7 @@ import { readAudio } from '../lib/audio'
 import { exportSticker, loadFFmpeg } from '../lib/ffmpeg'
 import { LIMITS, MAX_AUDIO_BYTES, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES } from '../lib/limits'
 import { saveSticker } from '../lib/library'
-import { overlayBlob, overlayDataUrl, frameBlob } from '../lib/overlay'
+import { overlayBlob, overlayDataUrl, frameBlob, wholeFrameBlob } from '../lib/overlay'
 import { DEFAULT_FX, defaultOrigVolume, needsAudio, type AudioClip, type Effects, type Mode, type Visual } from '../lib/project'
 import { download, shareFile } from '../lib/share'
 import { clampWindow, fmt, initialWindow, type Handle } from '../lib/trim'
@@ -229,7 +229,7 @@ export function Editor({ onHelp }: { onHelp: () => void }) {
     const c = framingToCrop(framing, visual.width, visual.height)
     return [
       mode, visual.url, audio?.url ?? '', vWin.start.toFixed(2), vWin.end.toFixed(2), aWin.start.toFixed(2), aWin.end.toFixed(2),
-      Math.round(c.x), Math.round(c.y), Math.round(c.side), fx.speed, fx.fade, fx.volOrig, fx.volAdd, fx.text, fx.textPos, fx.textColor, fx.textSize,
+      Math.round(c.x), Math.round(c.y), Math.round(c.side), fx.speed, fx.fade, fx.volOrig, fx.volAdd, fx.text, fx.textPos, fx.textColor, fx.textSize, fx.fit, fx.bg,
     ].join('|')
   }
 
@@ -244,8 +244,11 @@ export function Editor({ onHelp }: { onHelp: () => void }) {
       await loadFFmpeg()
       const crop = framingToCrop(framing, visual.width, visual.height)
       let vis: Parameters<typeof exportSticker>[0]['visual']
-      if (visual.kind === 'video') vis = { kind: 'video', file: visual.file, start: vWin.start, crop }
-      else vis = { kind: 'image', frame: await frameBlob(await loadImage(visual.url), crop.x + crop.side / 2, crop.y + crop.side / 2, crop.side) }
+      if (visual.kind === 'video') vis = { kind: 'video', file: visual.file, start: vWin.start, crop, whole: fx.fit === 'whole' ? { bg: fx.bg } : undefined }
+      else {
+        const img = await loadImage(visual.url)
+        vis = { kind: 'image', frame: fx.fit === 'whole' ? await wholeFrameBlob(img, fx.bg) : await frameBlob(img, crop.x + crop.side / 2, crop.y + crop.side / 2, crop.side) }
+      }
       const text = textStyle ? await overlayBlob(textStyle) : null
       setPhase('exporting')
       const blob = await exportSticker({
@@ -353,9 +356,11 @@ export function Editor({ onHelp }: { onHelp: () => void }) {
             canPlay={hasVideo || !!audio}
             onTogglePlay={pb.toggle}
             tags={tags}
+            fit={fx.fit}
+            bg={fx.bg}
             overlay={overlay}
           />
-          <label className="zoom">
+          {fx.fit === 'fill' && <label className="zoom">
             <span>{t('zoom')}</span>
             <input
               type="range"
@@ -365,7 +370,7 @@ export function Editor({ onHelp }: { onHelp: () => void }) {
               value={framing.zoom}
               onChange={(e) => { setFraming(clampFraming({ ...framing, zoom: Number(e.target.value) }, visual.width, visual.height)); touch() }}
             />
-          </label>
+          </label>}
         </>
       )}
       {audio && <audio ref={audioRef} src={audio.url} preload="auto" />}

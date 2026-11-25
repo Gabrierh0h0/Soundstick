@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { useT, type Key } from '../lib/i18n'
 import { LIMITS } from '../lib/limits'
-import { TEXT_COLORS, type Effects, type TextPos } from '../lib/project'
+import { BG_COLORS, TEXT_COLORS, type Effects, type TextPos } from '../lib/project'
 import { fmt } from '../lib/trim'
 import { Planet } from './Icons'
 
-type ToolId = 'vol' | 'speed' | 'fade' | 'text'
+type ToolId = 'vol' | 'speed' | 'fade' | 'text' | 'format'
 
 type Props = {
   onHelp: () => void
@@ -25,6 +25,7 @@ const COLOR_NAMES: Record<(typeof TEXT_COLORS)[number], Key> = {
   '#e3008c': 'colMagenta',
   '#ffd400': 'colYellow',
 }
+const BG_NAMES: Record<(typeof BG_COLORS)[number], Key> = { '#000000': 'colBlack', ...COLOR_NAMES }
 const POSITIONS: { id: TextPos; label: Key }[] = [
   { id: 'top', label: 'posTop' },
   { id: 'center', label: 'posCenter' },
@@ -52,6 +53,7 @@ export function Tools({ onHelp, fx, onFx, showOrig, showAdded, addedLabel, outLe
     { id: 'vol', label: 'toolVolume', value: showOrig && showAdded ? `${Math.round(fx.volOrig * 100)}/${Math.round(fx.volAdd * 100)}` : pct(showOrig ? fx.volOrig : fx.volAdd), on: false },
     { id: 'speed', label: 'toolSpeed', value: `${fx.speed}x`, on: fx.speed !== 1 },
     { id: 'fade', label: 'toolFade', value: fx.fade > 0 ? `${fx.fade} s` : t('fadeOff'), on: fx.fade > 0 },
+    { id: 'format', label: 'toolFormat', value: t(fx.fit === 'whole' ? 'fitWhole' : 'fitFill'), on: fx.fit === 'whole' },
     { id: 'text', label: 'toolText', value: fx.text.trim() ? Array.from(fx.text.trim()).slice(0, 10).join('') : t('fadeOff'), on: !!fx.text.trim() },
   ]
 
@@ -73,6 +75,26 @@ export function Tools({ onHelp, fx, onFx, showOrig, showAdded, addedLabel, outLe
             <>
               <Slider label={t('toolFade')} value={fx.fade} min={0} max={LIMITS.maxFade} step={0.1} shown={fx.fade > 0 ? `${fx.fade} s` : t('fadeOff')} onChange={(v) => onFx({ fade: Number(v.toFixed(1)) })} />
               <p className="hint">{t('fadeHint')}</p>
+            </>
+          )}
+          {id === 'format' && (
+            <>
+              <div className="seg two" role="group" aria-label={t('toolFormat')}>
+                <button type="button" aria-pressed={fx.fit === 'fill'} onClick={() => onFx({ fit: 'fill' })}>{t('fitFill')}</button>
+                <button type="button" aria-pressed={fx.fit === 'whole'} onClick={() => onFx({ fit: 'whole' })}>{t('fitWhole')}</button>
+              </div>
+              {fx.fit === 'whole' && (
+                <>
+                  <span className="mini">{t('fitBg')}</span>
+                  <div className="swatches" role="group" aria-label={t('fitBg')}>
+                    <button type="button" className="blur" aria-label={t('bgBlur')} aria-pressed={fx.bg === 'blur'} onClick={() => onFx({ bg: 'blur' })}>{t('bgBlur')}</button>
+                    {BG_COLORS.map((c) => (
+                      <button key={c} type="button" aria-label={t(BG_NAMES[c])} aria-pressed={fx.bg === c} style={{ background: c }} onClick={() => onFx({ bg: c })} />
+                    ))}
+                  </div>
+                </>
+              )}
+              <p className="hint">{t('fitHint')}</p>
             </>
           )}
           {id === 'text' && (

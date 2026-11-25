@@ -19,6 +19,10 @@ export type Effects = {
   textPos: TextPos
   textColor: string
   textSize: number
+  /** 'fill' llena el cuadrado recortando; 'whole' muestra todo y rellena lo que sobra. */
+  fit: 'fill' | 'whole'
+  /** Relleno cuando fit es 'whole': 'blur' (el mismo contenido borroso) o un color. */
+  bg: string
 }
 
 export const DEFAULT_FX: Effects = {
@@ -30,6 +34,8 @@ export const DEFAULT_FX: Effects = {
   textPos: 'bottom',
   textColor: '#ffffff',
   textSize: 64,
+  fit: 'fill',
+  bg: 'blur',
 }
 
 export const needsAudio = (m: Mode) => m !== 'video'
@@ -39,4 +45,5 @@ export const wantsImageOnly = (m: Mode) => m === 'imageAudio'
 /** Al cambiar de modo, el sonido original solo se conserva cuando no hay audio que lo reemplace. */
 export const defaultOrigVolume = (m: Mode) => (m === 'video' ? 1 : 0)
 
+export const BG_COLORS = ['#000000', '#ffffff', '#9ccc00', '#00aeef', '#e3008c', '#ffd400'] as const
 export const TEXT_COLORS = ['#ffffff', '#9ccc00', '#00aeef', '#e3008c', '#ffd400'] as const
