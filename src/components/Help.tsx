@@ -14,7 +14,7 @@ export function Help() {
       <p className="note">{t('helpNote')}</p>
       <h2>{t('helpPrivacyTitle')}</h2>
       <p>{t('helpPrivacy')}</p>
-      <p>{t('helpLimits', { mb: LIMITS.maxVideoMB, s: LIMITS.maxSeconds })}</p>
+      <p>{t('helpLimits', { mb: LIMITS.maxVideoMB, am: LIMITS.maxAudioMB, im: LIMITS.maxImageMB, s: LIMITS.maxSeconds })}</p>
     </section>
   )
 }

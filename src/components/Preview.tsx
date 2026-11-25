@@ -16,6 +16,7 @@ export function framingToCrop(f: Framing, w: number, h: number): Crop {
 }
 
 type Props = {
+  kind: 'video' | 'image'
   url: string
   width: number
   height: number
@@ -23,11 +24,14 @@ type Props = {
   onFraming: (f: Framing) => void
   videoRef: RefObject<HTMLVideoElement | null>
   playing: boolean
+  canPlay: boolean
   onTogglePlay: () => void
   label: string
+  /** Texto superpuesto (PNG transparente) para ver cómo quedará. */
+  overlay: string | null
 }
 
-export function Preview({ url, width, height, framing, onFraming, videoRef, playing, onTogglePlay, label }: Props) {
+export function Preview({ kind, url, width, height, framing, onFraming, videoRef, playing, canPlay, onTogglePlay, label, overlay }: Props) {
   const { t } = useT()
   const box = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState(354)
@@ -67,10 +71,15 @@ export function Preview({ url, width, height, framing, onFraming, videoRef, play
   return (
     <div className="stage" ref={box}>
       <div className="stage-pan" onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} title={t('framingHint')}>
-        <video ref={videoRef} src={url} playsInline preload="auto" style={style} />
+        {kind === 'video' ? (
+          <video ref={videoRef} src={url} playsInline preload="auto" style={style} />
+        ) : (
+          <img src={url} alt="" draggable={false} style={style} />
+        )}
       </div>
+      {overlay && <img className="stage-overlay" src={overlay} alt="" draggable={false} />}
       <span className="stage-label">{label}</span>
-      <button type="button" className="play" onClick={onTogglePlay} aria-label={playing ? t('pause') : t('play')}>
+      <button type="button" className="play" onClick={onTogglePlay} disabled={!canPlay} aria-label={playing ? t('pause') : t('play')}>
         <i className={playing ? 'pause' : 'tri'} />
       </button>
     </div>

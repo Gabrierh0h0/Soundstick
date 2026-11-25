@@ -1,35 +1,80 @@
-import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react'
+import { useCallback, useMemo, useRef, useState, type DragEvent } from 'react'
 import { useT, type Key } from '../lib/i18n'
+import { readAudio } from '../lib/audio'
 import { exportSticker, loadFFmpeg } from '../lib/ffmpeg'
-import { LIMITS, MAX_VIDEO_BYTES } from '../lib/limits'
+import { LIMITS, MAX_AUDIO_BYTES, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES } from '../lib/limits'
 import { saveSticker } from '../lib/library'
+import { overlayBlob, overlayDataUrl, frameBlob } from '../lib/overlay'
+import { DEFAULT_FX, defaultOrigVolume, needsAudio, type AudioClip, type Effects, type Mode, type Visual } from '../lib/project'
 import { download, shareFile } from '../lib/share'
-import { fmt } from '../lib/trim'
-import { readPeaks } from '../lib/waveform'
+import { clampWindow, fmt, initialWindow } from '../lib/trim'
+import { usePlayback } from '../hooks/usePlayback'
 import { clampFraming, framingToCrop, Preview, type Framing } from './Preview'
+import { Tools } from './Tools'
 import { Trim } from './Trim'
+import { VoiceRecorder } from './VoiceRecorder'
 
-type Loaded = { file: File; url: string; width: number; height: number; duration: number }
 type Phase = 'idle' | 'loading' | 'exporting'
 type Message = { kind: 'error' | 'info'; text: string } | null
+type Win = { start: number; end: number }
 
 const VIDEO_NAME = /\.(mp4|mov|m4v|webm|mkv|3gp)$/i
+const IMAGE_NAME = /\.(png|jpe?g|webp)$/i
+const AUDIO_NAME = /\.(mp3|m4a|aac|wav|ogg|oga|opus|webm|flac|amr|3gp)$/i
 const mb = (bytes: number) => (bytes / 1024 / 1024).toFixed(1)
+
+const MODES: { id: Mode; label: Key }[] = [
+  { id: 'video', label: 'srcVideo' },
+  { id: 'videoAudio', label: 'srcVideoAudio' },
+  { id: 'imageAudio', label: 'srcImageAudio' },
+  { id: 'voice', label: 'srcVoice' },
+]
+
+const isVideoFile = (f: File) => f.type.startsWith('video/') || VIDEO_NAME.test(f.name)
+const isImageFile = (f: File) => /^image\/(png|jpeg|webp)$/.test(f.type) || (!f.type && IMAGE_NAME.test(f.name))
+const isAudioFile = (f: File) => f.type.startsWith('audio/') || AUDIO_NAME.test(f.name)
+
+function loadVideo(url: string): Promise<{ width: number; height: number; duration: number }> {
+  return new Promise((resolve, reject) => {
+    const v = document.createElement('video')
+    v.preload = 'metadata'
+    v.muted = true
+    v.onloadedmetadata = () => {
+      if (v.videoWidth && v.videoHeight && Number.isFinite(v.duration)) resolve({ width: v.videoWidth, height: v.videoHeight, duration: v.duration })
+      else reject(new Error('metadata'))
+    }
+    v.onerror = () => reject(new Error('video'))
+    v.src = url
+  })
+}
+
+function loadImage(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => (img.naturalWidth ? resolve(img) : reject(new Error('image')))
+    img.onerror = () => reject(new Error('image'))
+    img.src = url
+  })
+}
 
 export function Editor({ onHelp }: { onHelp: () => void }) {
   const { t } = useT()
-  const input = useRef<HTMLInputElement>(null)
+  const visInput = useRef<HTMLInputElement>(null)
+  const audInput = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
+  const audioRef = useRef<HTMLAudioElement>(null)
   const cache = useRef<{ key: string; blob: Blob; saved: boolean } | null>(null)
 
-  const [pending, setPending] = useState<{ file: File; url: string } | null>(null)
-  const [video, setVideo] = useState<Loaded | null>(null)
-  const [peaks, setPeaks] = useState<number[] | null>(null)
-  const [win, setWin] = useState({ start: 0, end: 0 })
+  const [mode, setModeState] = useState<Mode>('video')
+  const [visual, setVisual] = useState<Visual | null>(null)
+  const [audio, setAudio] = useState<AudioClip | null>(null)
+  const [vPeaks, setVPeaks] = useState<number[] | null>(null)
+  const [vWin, setVWin] = useState<Win>({ start: 0, end: 0 })
+  const [aWin, setAWin] = useState<Win>({ start: 0, end: 0 })
   const [framing, setFraming] = useState<Framing>({ cx: 0, cy: 0, zoom: 1 })
-  const [time, setTime] = useState(0)
-  const [playing, setPlaying] = useState(false)
+  const [fx, setFx] = useState<Effects>(DEFAULT_FX)
   const [phase, setPhase] = useState<Phase>('idle')
+  const [reading, setReading] = useState(false)
   const [progress, setProgress] = useState(0)
   const [message, setMessage] = useState<Message>(null)
   const [saved, setSaved] = useState(false)
@@ -38,95 +83,170 @@ export function Editor({ onHelp }: { onHelp: () => void }) {
   const [armedKey, setArmedKey] = useState('')
 
   const fail = useCallback((key: Key, vars?: Record<string, string | number>) => setMessage({ kind: 'error', text: t(key, vars) }), [t])
+  const touch = () => { setSaved(false); setMessage(null) }
 
-  // Libera la URL del video anterior cuando cambia o al salir.
-  useEffect(() => () => { if (pending) URL.revokeObjectURL(pending.url) }, [pending])
+  const hasVideo = visual?.kind === 'video'
+  const maxLen = LIMITS.maxSeconds * fx.speed
+  const vLen = vWin.end - vWin.start
+  const aLen = aWin.end - aWin.start
+  const sourceLen = hasVideo ? vLen : audio ? aLen : 0
+  const outLen = sourceLen / fx.speed
 
-  function pick(file: File | undefined) {
+  const pb = usePlayback({
+    hasVideo,
+    hasAudio: !!audio,
+    vWin,
+    aWin,
+    speed: fx.speed,
+    volOrig: fx.volOrig,
+    volAdd: fx.volAdd,
+    videoRef,
+    audioRef,
+    mediaKey: `${visual?.url ?? ''}|${audio?.url ?? ''}`,
+  })
+
+  const textStyle = fx.text.trim() ? { text: fx.text, textPos: fx.textPos, textColor: fx.textColor, textSize: fx.textSize } : null
+  const overlay = useMemo(() => (textStyle ? overlayDataUrl(textStyle) : null), [fx.text, fx.textPos, fx.textColor, fx.textSize]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const drop = (url: string | undefined) => { if (url) URL.revokeObjectURL(url) }
+
+  function setMode(next: Mode) {
+    if (next === mode) return
+    pb.pause()
+    cache.current = null
+    touch()
+    // Cada modo conserva solo lo que le sirve.
+    const keepVisual = visual && (next === 'voice' || (next === 'imageAudio' ? visual.kind === 'image' : visual.kind === 'video'))
+    if (visual && !keepVisual) { drop(visual.url); setVisual(null); setVPeaks(null) }
+    const keepAudio = audio && needsAudio(next) && (next === 'voice' ? audio.kind === 'voice' : audio.kind === 'file')
+    if (audio && !keepAudio) { drop(audio.url); setAudio(null) }
+    setFx((f) => ({ ...f, volOrig: defaultOrigVolume(next) }))
+    setModeState(next)
+  }
+
+  async function pickVisual(file: File | undefined) {
     if (!file) return
     setMessage(null)
     setSaved(false)
-    if (!file.type.startsWith('video/') && !VIDEO_NAME.test(file.name)) return fail('errType')
-    if (file.size > MAX_VIDEO_BYTES) return fail('errSize', { mb: mb(file.size), max: LIMITS.maxVideoMB })
-    cache.current = null
-    setVideo(null)
-    setPeaks(null)
-    setPlaying(false)
-    setPending({ file, url: URL.createObjectURL(file) })
-    readPeaks(file, 96).then(setPeaks)
-  }
+    const wantVideo = mode !== 'imageAudio'
+    const wantImage = mode === 'imageAudio' || mode === 'voice'
+    const video = isVideoFile(file)
+    const image = !video && isImageFile(file)
+    if (video && !wantVideo) return fail('errImageType')
+    if (image && !wantImage) return fail('errVideoType')
+    if (!video && !image) return fail(mode === 'imageAudio' ? 'errImageType' : 'errVideoType')
+    const cap = video ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES
+    if (file.size > cap) return fail('errSize', { mb: mb(file.size), max: video ? LIMITS.maxVideoMB : LIMITS.maxImageMB })
 
-  // El video se monta una vez que existe `pending`; sus metadatos definen ventana y encuadre iniciales.
-  function onMeta() {
-    const v = videoRef.current
-    if (!v || !pending) return
-    const width = v.videoWidth
-    const height = v.videoHeight
-    const duration = v.duration
-    if (!width || !height || !Number.isFinite(duration)) return fail('errDecode')
-    setVideo({ file: pending.file, url: pending.url, width, height, duration })
-    setWin({ start: 0, end: Math.min(LIMITS.maxSeconds, duration) })
-    setFraming({ cx: width / 2, cy: height / 2, zoom: 1 })
-    setTime(0)
-  }
-
-  const togglePlay = () => {
-    const v = videoRef.current
-    if (!v || !video) return
-    if (v.paused) {
-      if (v.currentTime < win.start || v.currentTime >= win.end) v.currentTime = win.start
-      void v.play()
-    } else v.pause()
-  }
-
-  // Reproduce solo el tramo elegido, en bucle.
-  useEffect(() => {
-    const v = videoRef.current
-    if (!v || !video) return
-    const tick = () => {
-      setTime(v.currentTime)
-      if (v.currentTime >= win.end - 0.03) v.currentTime = win.start
+    const url = URL.createObjectURL(file)
+    setReading(true)
+    try {
+      let width: number
+      let height: number
+      let duration = 0
+      if (video) ({ width, height, duration } = await loadVideo(url))
+      else {
+        const img = await loadImage(url)
+        width = img.naturalWidth
+        height = img.naturalHeight
+      }
+      pb.pause()
+      cache.current = null
+      drop(visual?.url)
+      setVisual({ kind: video ? 'video' : 'image', file, url, width, height, duration })
+      setFraming({ cx: width / 2, cy: height / 2, zoom: 1 })
+      setVPeaks(null)
+      if (video) {
+        setVWin(initialWindow(duration, maxLen))
+        void readAudio(file, 96).then((info) => setVPeaks((cur) => cur ?? info?.peaks ?? null))
+      }
+    } catch {
+      drop(url)
+      fail(video ? 'errDecode' : 'errImageDecode')
+    } finally {
+      setReading(false)
     }
-    const on = () => setPlaying(true)
-    const off = () => setPlaying(false)
-    v.addEventListener('timeupdate', tick)
-    v.addEventListener('play', on)
-    v.addEventListener('pause', off)
-    return () => {
-      v.removeEventListener('timeupdate', tick)
-      v.removeEventListener('play', on)
-      v.removeEventListener('pause', off)
-    }
-  }, [video, win.start, win.end])
+  }
 
-  const changeWindow = (start: number, end: number) => {
-    const v = videoRef.current
-    if (v?.paused) v.currentTime = start !== win.start ? start : Math.max(start, end - 0.1)
-    setWin({ start, end })
+  async function pickAudio(file: File | undefined, kind: 'file' | 'voice') {
+    if (!file) return
+    setMessage(null)
     setSaved(false)
+    if (kind === 'file' && !isAudioFile(file)) return fail('errAudioType')
+    if (file.size > MAX_AUDIO_BYTES) return fail('errSize', { mb: mb(file.size), max: LIMITS.maxAudioMB })
+    setReading(true)
+    try {
+      const info = await readAudio(file, 96)
+      if (!info || !Number.isFinite(info.duration) || info.duration <= 0) return fail('errAudioDecode')
+      pb.pause()
+      cache.current = null
+      drop(audio?.url)
+      const len = hasVideo ? Math.min(vLen, maxLen) : maxLen
+      setAudio({ kind, file, url: URL.createObjectURL(file), duration: info.duration, peaks: info.peaks })
+      setAWin(initialWindow(info.duration, len))
+    } finally {
+      setReading(false)
+    }
   }
+
+  function onFx(patch: Partial<Effects>) {
+    touch()
+    setFx((f) => ({ ...f, ...patch }))
+    if (patch.speed !== undefined) {
+      const limit = LIMITS.maxSeconds * patch.speed
+      setVWin((w) => clampWindow(w, limit))
+      setAWin((w) => clampWindow(w, limit))
+    }
+  }
+
+  const changeV = (start: number, end: number) => {
+    if (start !== vWin.start) pb.seek('video', start)
+    else pb.seek('video', Math.max(start, end - 0.1))
+    setVWin({ start, end })
+    touch()
+  }
+  const changeA = (start: number, end: number) => {
+    if (start !== aWin.start) pb.seek('audio', start)
+    else pb.seek('audio', Math.max(start, end - 0.1))
+    setAWin({ start, end })
+    touch()
+  }
+
+  const canExport = !!visual && (!needsAudio(mode) || !!audio) && sourceLen > 0
 
   const keyOf = () => {
-    if (!video) return ''
-    const c = framingToCrop(framing, video.width, video.height)
-    return [video.file.name, video.file.size, win.start.toFixed(2), win.end.toFixed(2), Math.round(c.x), Math.round(c.y), Math.round(c.side)].join('|')
+    if (!visual || !canExport) return ''
+    const c = framingToCrop(framing, visual.width, visual.height)
+    return [
+      mode, visual.url, audio?.url ?? '', vWin.start.toFixed(2), vWin.end.toFixed(2), aWin.start.toFixed(2), aWin.end.toFixed(2),
+      Math.round(c.x), Math.round(c.y), Math.round(c.side), fx.speed, fx.fade, fx.volOrig, fx.volAdd, fx.text, fx.textPos, fx.textColor, fx.textSize,
+    ].join('|')
   }
 
   async function render(): Promise<Blob | null> {
-    if (!video) return null
+    if (!visual || !canExport) return null
     const key = keyOf()
     if (cache.current?.key === key) return cache.current.blob
-    videoRef.current?.pause()
+    pb.pause()
     setProgress(0)
     setPhase('loading')
     try {
       await loadFFmpeg()
+      const crop = framingToCrop(framing, visual.width, visual.height)
+      let vis: Parameters<typeof exportSticker>[0]['visual']
+      if (visual.kind === 'video') vis = { kind: 'video', file: visual.file, start: vWin.start, crop }
+      else vis = { kind: 'image', frame: await frameBlob(await loadImage(visual.url), crop.x + crop.side / 2, crop.y + crop.side / 2, crop.side) }
+      const text = textStyle ? await overlayBlob(textStyle) : null
       setPhase('exporting')
       const blob = await exportSticker({
-        file: video.file,
-        start: win.start,
-        duration: win.end - win.start,
-        crop: framingToCrop(framing, video.width, video.height),
+        visual: vis,
+        audio: audio ? { file: audio.file, start: aWin.start } : null,
+        sourceLength: sourceLen,
+        speed: fx.speed,
+        fade: fx.fade,
+        volOrig: fx.volOrig,
+        volAdd: fx.volAdd,
+        overlay: text,
         onProgress: setProgress,
       })
       cache.current = { key, blob, saved: false }
@@ -141,7 +261,7 @@ export function Editor({ onHelp }: { onHelp: () => void }) {
 
   async function keep(blob: Blob) {
     if (cache.current && !cache.current.saved) {
-      await saveSticker(blob, win.end - win.start)
+      await saveSticker(blob, outLen)
       cache.current.saved = true
     }
     setSaved(true)
@@ -174,71 +294,112 @@ export function Editor({ onHelp }: { onHelp: () => void }) {
   const onDrop = (e: DragEvent) => {
     e.preventDefault()
     setOver(false)
-    pick(e.dataTransfer.files[0])
+    const file = e.dataTransfer.files[0]
+    if (!file) return
+    if (isAudioFile(file) && !isVideoFile(file) && mode !== 'video' && mode !== 'voice') void pickAudio(file, 'file')
+    else void pickVisual(file)
   }
 
   const busy = phase !== 'idle'
-  const ready = !!video && armedKey !== '' && armedKey === keyOf()
-  const len = win.end - win.start
-  const label = `${LIMITS.outputSize}×${LIMITS.outputSize} · ${fmt(len)} s`
+  const ready = canExport && armedKey !== '' && armedKey === keyOf()
+  const label = `${LIMITS.outputSize}×${LIMITS.outputSize} · ${fmt(outLen)} s`
+  const visAccept = mode === 'video' || mode === 'videoAudio' ? 'video/*' : mode === 'imageAudio' ? 'image/png,image/jpeg,image/webp' : 'image/png,image/jpeg,image/webp,video/*'
+  const pickTitle: Key = mode === 'imageAudio' ? 'pickImage' : mode === 'voice' ? 'pickVisualVoice' : 'pickVideo'
+  const pickHint = mode === 'imageAudio' ? t('pickHintImage', { mb: LIMITS.maxImageMB }) : mode === 'voice' ? t('pickHintVoice') : t('pickHintVideo', { mb: LIMITS.maxVideoMB, s: LIMITS.maxSeconds })
+  const addedLabel: Key = mode === 'voice' ? 'volVoice' : mode === 'imageAudio' ? 'volAudio' : 'volAdded'
+  const showOrig = mode === 'video' || mode === 'videoAudio' || (mode === 'voice' && hasVideo)
 
   return (
     <section className="editor" onDragOver={(e) => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)} onDrop={onDrop}>
-      <input ref={input} type="file" accept="video/*" hidden onChange={(e) => { pick(e.target.files?.[0]); e.target.value = '' }} />
+      <input ref={visInput} type="file" accept={visAccept} hidden onChange={(e) => { void pickVisual(e.target.files?.[0]); e.target.value = '' }} />
+      <input ref={audInput} type="file" accept="audio/*" hidden onChange={(e) => { void pickAudio(e.target.files?.[0], 'file'); e.target.value = '' }} />
 
-      {!pending ? (
-        <button type="button" className={`stage pick${over ? ' over' : ''}`} onClick={() => input.current?.click()}>
+      <div className="sources" role="group">
+        {MODES.map((m) => (
+          <button key={m.id} type="button" className={mode === m.id ? 'on' : ''} aria-pressed={mode === m.id} onClick={() => setMode(m.id)}>{t(m.label)}</button>
+        ))}
+      </div>
+
+      {!visual ? (
+        <button type="button" className={`stage pick${over ? ' over' : ''}`} aria-busy={reading} disabled={reading} onClick={() => visInput.current?.click()}>
           <i className="plus" aria-hidden="true" />
-          <strong>{t('pickVideo')}</strong>
-          <small>{t('pickHint', { mb: LIMITS.maxVideoMB, s: LIMITS.maxSeconds })}</small>
+          <strong>{reading ? t('loadingFile') : t(pickTitle)}</strong>
+          {!reading && <small>{pickHint}</small>}
         </button>
       ) : (
         <>
-          {/* Video oculto hasta tener metadatos; luego lo toma el visor cuadrado. */}
-          {!video && <video ref={videoRef} src={pending.url} preload="metadata" onLoadedMetadata={onMeta} onError={() => fail('errDecode')} hidden />}
-          {video && (
-            <>
-              <Preview
-                url={video.url}
-                width={video.width}
-                height={video.height}
-                framing={framing}
-                onFraming={(f) => { setFraming(f); setSaved(false) }}
-                videoRef={videoRef}
-                playing={playing}
-                onTogglePlay={togglePlay}
-                label={label}
-              />
-              <label className="zoom">
-                <span>{t('zoom')}</span>
-                <input
-                  type="range"
-                  min={1}
-                  max={4}
-                  step={0.05}
-                  value={framing.zoom}
-                  onChange={(e) => { setFraming(clampFraming({ ...framing, zoom: Number(e.target.value) }, video.width, video.height)); setSaved(false) }}
-                />
-              </label>
-            </>
-          )}
-          {!video && <div className="stage pick" aria-busy="true"><strong>{t('loadingEngine')}</strong></div>}
+          <Preview
+            kind={visual.kind}
+            url={visual.url}
+            width={visual.width}
+            height={visual.height}
+            framing={framing}
+            onFraming={(f) => { setFraming(f); touch() }}
+            videoRef={videoRef}
+            playing={pb.playing}
+            canPlay={hasVideo || !!audio}
+            onTogglePlay={pb.toggle}
+            label={label}
+            overlay={overlay}
+          />
+          <label className="zoom">
+            <span>{t('zoom')}</span>
+            <input
+              type="range"
+              min={1}
+              max={4}
+              step={0.05}
+              value={framing.zoom}
+              onChange={(e) => { setFraming(clampFraming({ ...framing, zoom: Number(e.target.value) }, visual.width, visual.height)); touch() }}
+            />
+          </label>
         </>
       )}
+      {audio && <audio ref={audioRef} src={audio.url} preload="auto" />}
 
-      {video && (
+      {hasVideo && visual && (
         <div className="trim-block">
-          <Trim duration={video.duration} start={win.start} end={win.end} time={time} peaks={peaks} onChange={changeWindow} />
+          <Trim label={t('trimVideo')} duration={visual.duration} start={vWin.start} end={vWin.end} time={pb.timeV} maxLen={maxLen} peaks={vPeaks} onChange={changeV} />
           <p className="readout">
-            <span>{fmt(win.start)} → {fmt(win.end)}</span> {t('trimLen', { len: fmt(len), max: LIMITS.maxSeconds })} · {t('fileSize', { mb: mb(video.file.size), max: LIMITS.maxVideoMB })}
-            <button type="button" className="change" onClick={() => input.current?.click()}>{t('changeVideo')}</button>
+            <span>{fmt(vWin.start)} → {fmt(vWin.end)}</span> {t('trimLen', { len: fmt(vLen), max: fmt(maxLen) })} · {t('fileSize', { mb: mb(visual.file.size), max: LIMITS.maxVideoMB })}
+            <button type="button" className="change" onClick={() => visInput.current?.click()}>{t('changeVisual')}</button>
           </p>
         </div>
       )}
+      {visual && !hasVideo && (
+        <p className="readout"><span>{visual.file.name}</span><button type="button" className="change" onClick={() => visInput.current?.click()}>{t('changeVisual')}</button></p>
+      )}
+
+      {needsAudio(mode) && (
+        <div className="audio-block">
+          {mode === 'voice' ? (
+            <VoiceRecorder hasRecording={!!audio} disabled={reading} onFile={(f) => void pickAudio(f, 'voice')} onError={() => fail('errMic')} />
+          ) : (
+            !audio && (
+              <button type="button" className="audio-pick" disabled={reading} onClick={() => audInput.current?.click()}>
+                <i className="plus" aria-hidden="true" />
+                <span>{t('pickAudio')}</span>
+                <small>{t('pickAudioHint', { mb: LIMITS.maxAudioMB, s: LIMITS.maxSeconds })}</small>
+              </button>
+            )
+          )}
+          {audio && (
+            <div className="trim-block">
+              <Trim label={t('trimAudio')} accent="cyan" duration={audio.duration} start={aWin.start} end={aWin.end} time={pb.timeA} maxLen={maxLen} peaks={audio.peaks} onChange={changeA} />
+              <p className="readout">
+                <span>{fmt(aWin.start)} → {fmt(aWin.end)}</span> {t('trimLen', { len: fmt(aLen), max: fmt(maxLen) })}
+                {audio.kind === 'file' && <button type="button" className="change" onClick={() => audInput.current?.click()}>{t('changeAudio')}</button>}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {visual && <Tools fx={fx} onFx={onFx} showOrig={showOrig} showAdded={needsAudio(mode)} addedLabel={addedLabel} outLen={outLen} />}
 
       <div className="actions">
-        <button type="button" className="mg" disabled={!video || busy} onClick={onSave}>{t('save')}</button>
-        <button type="button" className={`cy${ready ? ' ready' : ''}`} disabled={!video || busy} onClick={onShare}>{ready ? t('shareNow') : t('share')}</button>
+        <button type="button" className="mg" disabled={!canExport || busy} onClick={onSave}>{t('save')}</button>
+        <button type="button" className={`cy${ready ? ' ready' : ''}`} disabled={!canExport || busy} onClick={onShare}>{ready ? t('shareNow') : t('share')}</button>
       </div>
 
       <div className="status" role="status" aria-live="polite">
@@ -248,14 +409,8 @@ export function Editor({ onHelp }: { onHelp: () => void }) {
           </p>
         )}
         {!busy && message && <p className={message.kind}>{message.text}</p>}
+        {!busy && !message && visual && needsAudio(mode) && !audio && <p className="info">{t('needAudio')}</p>}
         {!busy && saved && message?.kind === 'info' && <button type="button" className="next" onClick={onHelp}>{t('savedNext')}</button>}
-      </div>
-
-      <div className="sources" role="group">
-        <button type="button" className="on" aria-pressed="true">{t('srcVideo')}</button>
-        <button type="button" disabled>{t('srcVideoAudio')}<small>{t('soon')}</small></button>
-        <button type="button" disabled>{t('srcImageAudio')}<small>{t('soon')}</small></button>
-        <button type="button" disabled>{t('srcVoice')}<small>{t('soon')}</small></button>
       </div>
     </section>
   )

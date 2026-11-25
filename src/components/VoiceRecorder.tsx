@@ -1,0 +1,58 @@
+import { useEffect, useRef, useState } from 'react'
+import { useT } from '../lib/i18n'
+import { LIMITS } from '../lib/limits'
+import { startRecording, type Recording } from '../lib/recorder'
+
+type Props = {
+  hasRecording: boolean
+  disabled?: boolean
+  onFile: (file: File) => void
+  onError: () => void
+}
+
+export function VoiceRecorder({ hasRecording, disabled, onFile, onError }: Props) {
+  const { t } = useT()
+  const [seconds, setSeconds] = useState<number | null>(null)
+  const rec = useRef<Recording | null>(null)
+
+  // Si se sale de la pantalla grabando, se corta el micrófono.
+  useEffect(() => () => void rec.current?.stop().catch(() => {}), [])
+
+  async function start() {
+    try {
+      setSeconds(0)
+      rec.current = await startRecording(LIMITS.maxSeconds, setSeconds, (file) => {
+        rec.current = null
+        setSeconds(null)
+        onFile(file)
+      })
+    } catch {
+      setSeconds(null)
+      onError()
+    }
+  }
+
+  async function stop() {
+    const r = rec.current
+    rec.current = null
+    setSeconds(null)
+    if (r) onFile(await r.stop())
+  }
+
+  if (seconds !== null) {
+    return (
+      <button type="button" className="rec live" onClick={stop}>
+        <i className="dot" aria-hidden="true" />
+        <span role="timer">{t('recording', { s: seconds.toFixed(1) })}</span>
+        <small>{t('stopRec')}</small>
+      </button>
+    )
+  }
+  return (
+    <button type="button" className="rec" onClick={start} disabled={disabled}>
+      <i className="dot" aria-hidden="true" />
+      <span>{hasRecording ? t('rerecord') : t('record')}</span>
+      {!hasRecording && <small>{t('recordHint', { s: LIMITS.maxSeconds })}</small>}
+    </button>
+  )
+}

@@ -1,5 +1,7 @@
-/** Picos de volumen (0-1) del audio de un archivo; null si el navegador no puede decodificarlo. */
-export async function readPeaks(file: File, bars: number): Promise<number[] | null> {
+export type AudioInfo = { peaks: number[]; duration: number }
+
+/** Decodifica un audio: duración y picos de volumen (0-1). Devuelve null si el navegador no lo entiende. */
+export async function readAudio(file: Blob, bars: number): Promise<AudioInfo | null> {
   const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
   if (!Ctx) return null
   const ctx = new Ctx()
@@ -15,7 +17,7 @@ export async function readPeaks(file: File, bars: number): Promise<number[] | nu
       peaks.push(max)
     }
     const top = Math.max(...peaks, 0.001)
-    return peaks.map((p) => Math.max(0.06, p / top))
+    return { peaks: peaks.map((p) => Math.max(0.06, p / top)), duration: audio.duration }
   } catch {
     return null
   } finally {
