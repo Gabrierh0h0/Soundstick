@@ -1,0 +1,100 @@
+import { useRef, type KeyboardEvent, type PointerEvent } from 'react'
+import { useT } from '../lib/i18n'
+import { LIMITS } from '../lib/limits'
+import { moveWindow, type Handle } from '../lib/trim'
+
+type Props = {
+  duration: number
+  start: number
+  end: number
+  time: number
+  peaks: number[] | null
+  onChange: (start: number, end: number) => void
+}
+
+export function Trim({ duration, start, end, time, peaks, onChange }: Props) {
+  const { t } = useT()
+  const track = useRef<HTMLDivElement>(null)
+  const drag = useRef<{ kind: Handle; x0: number; start: number; end: number } | null>(null)
+
+  const apply = (kind: Handle, base: { start: number; end: number }, delta: number) => {
+    const next = moveWindow(kind, base, delta, duration, LIMITS.minSeconds, LIMITS.maxSeconds)
+    onChange(next.start, next.end)
+  }
+
+  const down = (kind: Handle) => (e: PointerEvent<HTMLElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId)
+    drag.current = { kind, x0: e.clientX, start, end }
+  }
+  const move = (e: PointerEvent<HTMLElement>) => {
+    const d = drag.current
+    const width = track.current?.clientWidth
+    if (!d || !width) return
+    apply(d.kind, d, ((e.clientX - d.x0) / width) * duration)
+  }
+  const up = () => {
+    drag.current = null
+  }
+  const key = (kind: Handle) => (e: KeyboardEvent<HTMLElement>) => {
+    const step = e.shiftKey ? 1 : 0.1
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') apply(kind, { start, end }, -step)
+    else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') apply(kind, { start, end }, step)
+    else return
+    e.preventDefault()
+  }
+
+  const pct = (s: number) => `${(s / duration) * 100}%`
+  const bars = peaks ?? Array.from({ length: 64 }, () => 0.12)
+
+  return (
+    <div className="trim">
+      <div className="trim-track" ref={track} aria-label={t('noWave')} role={peaks ? undefined : 'img'}>
+        <div className="wave" aria-hidden="true">
+          {bars.map((h, i) => {
+            const at = ((i + 0.5) / bars.length) * duration
+            return <i key={i} className={at >= start && at <= end ? 'on' : ''} style={{ height: `${h * 100}%` }} />
+          })}
+        </div>
+        <div
+          className="trim-window"
+          style={{ left: pct(start), width: `${((end - start) / duration) * 100}%` }}
+          onPointerDown={down('move')}
+          onPointerMove={move}
+          onPointerUp={up}
+          onPointerCancel={up}
+        />
+        <i className="playhead" style={{ left: pct(Math.min(Math.max(time, start), end)) }} aria-hidden="true" />
+        <button
+          type="button"
+          className="handle"
+          style={{ left: pct(start) }}
+          role="slider"
+          aria-label={t('trimFrom')}
+          aria-valuemin={0}
+          aria-valuemax={Math.max(0, end - LIMITS.minSeconds)}
+          aria-valuenow={Number(start.toFixed(1))}
+          onPointerDown={down('start')}
+          onPointerMove={move}
+          onPointerUp={up}
+          onPointerCancel={up}
+          onKeyDown={key('start')}
+        />
+        <button
+          type="button"
+          className="handle"
+          style={{ left: pct(end) }}
+          role="slider"
+          aria-label={t('trimTo')}
+          aria-valuemin={start + LIMITS.minSeconds}
+          aria-valuemax={duration}
+          aria-valuenow={Number(end.toFixed(1))}
+          onPointerDown={down('end')}
+          onPointerMove={move}
+          onPointerUp={up}
+          onPointerCancel={up}
+          onKeyDown={key('end')}
+        />
+      </div>
+    </div>
+  )
+}

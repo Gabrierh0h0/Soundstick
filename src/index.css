@@ -1,0 +1,114 @@
+/* Soundstick · dirección Metro: mosaicos planos sobre negro, minúsculas gigantes, un color por función. */
+:root {
+  --bg: #000;
+  --ink: #fff;
+  --ink-2: #c4c4c4;
+  --tile: #1f1f1f;
+  --cy: #00aeef;
+  --mg: #e3008c;
+  --lm: #9ccc00;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  color-scheme: dark;
+  font-family: 'Hanken Grotesk', 'Segoe UI', system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); -webkit-tap-highlight-color: transparent; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; touch-action: manipulation; }
+button:disabled { cursor: not-allowed; }
+:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+::selection { background: var(--lm); color: #000; }
+[hidden] { display: none !important; }
+
+.app { max-width: 430px; min-height: 100dvh; margin: 0 auto; padding: max(30px, env(safe-area-inset-top)) 18px max(32px, env(safe-area-inset-bottom)); overflow-x: clip; }
+
+/* ── Título y navegación ── */
+.title { margin: 0 0 0 -4px; font-weight: 200; font-size: clamp(88px, 28vw, 112px); line-height: 1; letter-spacing: -0.04em; white-space: nowrap; transform: translateX(-0.23em); user-select: none; }
+.pivot { display: flex; align-items: baseline; gap: 14px; margin: -4px 0 12px; font-weight: 300; font-size: 23px; }
+.pivot > button { min-height: 36px; }
+.pivot > button { opacity: 0.55; }
+.pivot > button[aria-current='page'] { opacity: 1; }
+.lang { margin-left: auto; display: flex; gap: 8px; font-size: 16px; }
+.lang button { opacity: 0.55; min-width: 28px; min-height: 28px; }
+.lang button[aria-pressed='true'] { opacity: 1; color: var(--lm); font-weight: 600; }
+
+/* ── Visor cuadrado ── */
+.stage { position: relative; width: 100%; aspect-ratio: 1; background: var(--cy); color: #000; display: grid; place-items: center; overflow: hidden; touch-action: none; }
+.stage-pan { position: absolute; inset: 0; cursor: grab; }
+.stage-pan:active { cursor: grabbing; }
+.stage video { position: absolute; max-width: none; pointer-events: none; background: #000; }
+.stage-label { position: absolute; left: 12px; bottom: 10px; font-size: 18px; font-weight: 600; color: #fff; text-shadow: 0 1px 6px rgb(0 0 0 / 0.6); pointer-events: none; }
+.play { position: absolute; right: 12px; bottom: 12px; width: 48px; height: 48px; border: 2px solid #fff; border-radius: 50%; display: grid; place-items: center; background: rgb(0 0 0 / 0.25); }
+.play i.tri { width: 16px; height: 18px; background: #fff; clip-path: polygon(0 0, 100% 50%, 0 100%); margin-left: 4px; }
+.play i.pause { width: 16px; height: 18px; background: linear-gradient(90deg, #fff 0 35%, transparent 35% 65%, #fff 65%); }
+
+.stage.pick { border: 0; touch-action: manipulation; align-content: center; justify-items: start; padding: 0 22px; gap: 6px; cursor: pointer; transition: background 0.2s var(--ease); }
+.stage.pick.over { background: var(--lm); }
+.stage.pick strong { font-weight: 300; font-size: 40px; line-height: 1; }
+.stage.pick small { font-size: 18px; font-weight: 600; }
+.plus { position: relative; width: 84px; height: 84px; margin-bottom: 14px; border: 3px solid #000; }
+.plus::before, .plus::after { content: ''; position: absolute; background: #000; }
+.plus::before { left: 50%; top: 18px; bottom: 18px; width: 3px; margin-left: -1.5px; }
+.plus::after { top: 50%; left: 18px; right: 18px; height: 3px; margin-top: -1.5px; }
+
+.zoom { display: flex; align-items: center; gap: 14px; margin-top: 6px; padding: 0 2px; font-size: 16px; font-weight: 300; color: var(--ink-2); min-height: 44px; }
+.zoom input { flex: 1; accent-color: var(--lm); height: 28px; }
+
+/* ── Fuentes ── */
+.sources { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 18px; }
+.sources button { min-height: 84px; background: var(--tile); padding: 8px; font-size: 15px; font-weight: 300; line-height: 1.1; display: flex; flex-direction: column; justify-content: flex-end; text-wrap: balance; }
+.sources button.on { background: var(--lm); color: #000; font-weight: 600; }
+.sources button:disabled { color: #a8a8a8; }
+.sources small { font-size: 12px; margin-top: 4px; color: #8e8e8e; }
+
+/* ── Recorte ── */
+.trim-block { margin-top: 10px; }
+.trim-track { position: relative; height: 64px; touch-action: none; user-select: none; }
+.wave { position: absolute; inset: 0; display: flex; align-items: center; gap: 2px; }
+.wave i { flex: 1; background: #3a3a3a; min-height: 3px; }
+.wave i.on { background: var(--ink); }
+.trim-window { position: absolute; top: 0; bottom: 0; cursor: grab; border-block: 2px solid var(--lm); }
+.playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--cy); pointer-events: none; }
+.handle { position: absolute; top: 0; bottom: 0; width: 44px; margin-left: -22px; cursor: ew-resize; touch-action: none; }
+.handle::before { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 6px; margin-left: -3px; background: var(--lm); }
+.readout { margin: 6px 0 0; font-size: 15px; font-weight: 300; color: #bdbdbd; display: flex; flex-wrap: wrap; gap: 0 6px; align-items: baseline; }
+.readout span { color: var(--lm); font-weight: 600; }
+.change { margin-left: auto; min-height: 36px; color: var(--ink); text-decoration: underline; text-underline-offset: 4px; }
+
+/* ── Acciones ── */
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
+.actions button { min-height: 76px; padding: 10px 12px; font-size: 24px; font-weight: 300; line-height: 1; display: flex; align-items: flex-end; transition: transform 0.2s var(--ease), opacity 0.2s; }
+.actions .mg { background: var(--mg); }
+.actions .cy { background: var(--cy); color: #000; }
+.actions .cy.ready { background: var(--lm); font-weight: 600; }
+.actions button:disabled { opacity: 0.35; }
+.actions button:not(:disabled):active { transform: perspective(300px) rotateX(6deg) scale(0.97); }
+
+.status { margin-top: 8px; min-height: 24px; }
+.status p { margin: 0; padding: 10px 12px; font-size: 16px; font-weight: 300; line-height: 1.3; background: var(--tile); }
+.status p.error { background: var(--mg); color: #fff; font-weight: 600; }
+.status p.info { border-left: 0; background: var(--lm); color: #000; font-weight: 600; }
+.progress { position: relative; overflow: hidden; background: var(--tile); }
+.progress::before { content: ''; position: absolute; inset: 0; background: var(--mg); transform-origin: left; transform: scaleX(var(--p, 0)); transition: transform 0.3s linear; }
+.progress span { position: relative; }
+.next { margin-top: 6px; min-height: 44px; padding: 0 2px; text-decoration: underline; text-underline-offset: 4px; font-weight: 300; font-size: 18px; }
+
+/* ── Biblioteca ── */
+.lib { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.lib video { display: block; width: 100%; aspect-ratio: 1; background: var(--cy); object-fit: cover; cursor: pointer; }
+.lib-actions { display: grid; grid-template-columns: 1fr; }
+.lib-actions button { min-height: 44px; padding: 0 10px; background: var(--tile); font-size: 15px; font-weight: 300; border-top: 1px solid #000; }
+.lib-actions button.sure { background: var(--mg); font-weight: 600; }
+.empty { margin: 8px 0; font-size: 22px; font-weight: 300; line-height: 1.25; color: var(--ink-2); max-width: 22ch; }
+
+/* ── Ayuda ── */
+.help h2 { margin: 24px 0 8px; font-weight: 300; font-size: 28px; color: var(--lm); }
+.help h2:first-child { margin-top: 4px; }
+.help ol { margin: 0; padding-left: 1.4em; display: grid; gap: 10px; font-size: 18px; font-weight: 300; line-height: 1.35; }
+.help p { font-size: 17px; font-weight: 300; line-height: 1.4; color: var(--ink-2); margin: 8px 0; max-width: 40ch; }
+.help .note { background: var(--tile); padding: 12px; color: var(--ink); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+}
