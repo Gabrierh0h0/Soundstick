@@ -24,3 +24,17 @@ dist-ssr
 *.sw?
 
 .vercel
+
+# Android / nativo (se regeneran con los scripts)
+android/.gradle/
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/build/
+android/local.properties
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor*.json
+android/app/libs/*.aar
+native/out/
+*.keystore
+*.jks
+keystore.properties

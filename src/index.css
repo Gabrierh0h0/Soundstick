@@ -215,3 +215,16 @@ button:disabled { cursor: not-allowed; }
   .tick span { animation: none; padding-left: 8px; }
   .orb, .rec.live .dot { animation: none; }
 }
+
+/* ---- enviar con sonido a whatsapp ---- */
+.actions.wa { grid-template-columns: 1fr; }
+.modal { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px; background: rgba(20, 8, 48, 0.72); }
+.modal-box { width: min(100%, 360px); max-height: 90dvh; overflow: auto; padding: 14px; background: var(--lil); border: 2px solid; border-color: #fff var(--edge) var(--edge) #fff; box-shadow: 3px 3px 0 #000; color: #000; }
+.modal-box h3 { margin: 0 0 8px; font: 400 22px/1 var(--f-term); text-transform: uppercase; }
+.modal-box p { margin: 0 0 10px; font: 400 14px/1.35 var(--f-mono); overflow-wrap: anywhere; }
+.modal-field { display: grid; gap: 4px; margin: 0 0 10px; font: 400 13px/1.2 var(--f-mono); }
+.modal-field input { min-height: 44px; padding: 6px 8px; font: 400 18px var(--f-mono); color: #000; background: #fff; border: 2px solid; border-color: var(--edge) #fff #fff var(--edge); }
+.pair-code { padding: 10px; text-align: center; font: 400 34px/1 var(--f-term) !important; letter-spacing: 4px; background: #000; color: var(--yel); }
+.modal-actions { display: flex; gap: 8px; }
+.modal-actions button { flex: 1; min-height: 48px; font: 900 12px/1.2 var(--f-btn); text-transform: uppercase; color: #000; background: var(--lil); border: 2px solid; border-color: #fff var(--edge) var(--edge) #fff; }
+.modal-actions button:disabled { color: #6e6490; }

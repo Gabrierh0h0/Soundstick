@@ -11,6 +11,17 @@ import '@fontsource/oxanium/latin-400.css'
 import '@fontsource/oxanium/latin-700.css'
 import '@fontsource/archivo-black/latin-400.css'
 import './index.css'
+import { Capacitor } from '@capacitor/core'
+
+// Dentro de la app Android los archivos ya van empaquetados: sin service worker, siempre se ve la versión instalada.
+if (Capacitor.isNativePlatform() && 'serviceWorker' in navigator) {
+  void navigator.serviceWorker.getRegistrations().then(async (regs) => {
+    if (!regs.length) return
+    await Promise.all(regs.map((r) => r.unregister()))
+    await Promise.all((await caches.keys()).map((k) => caches.delete(k)))
+    location.reload()
+  })
+}
 import App from './App.tsx'
 
 createRoot(document.getElementById('root')!).render(

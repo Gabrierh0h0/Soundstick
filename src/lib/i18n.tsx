@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 
 export type Lang = 'es' | 'en'
 
-const dict = {
+export const dict = {
   es: {
     navCreate: 'crear', navLibrary: 'biblioteca', navHelp: 'ayuda',
     srcVideo: 'video + sonido', srcVideoAudio: 'video + audio', srcImageAudio: 'imagen + audio', srcVoice: 'voz',
@@ -42,6 +42,11 @@ const dict = {
     helpNote: 'Los stickers con sonido se están activando poco a poco en WhatsApp. Empezaron en Android; si no ves el botón de audio, aún no te llega.',
     helpPrivacyTitle: 'tus archivos',
     helpPrivacy: 'Todo se procesa en tu dispositivo. Nada se sube a ningún servidor.',
+    waSend: 'enviar con sonido a whatsapp', waSent: 'Listo. Está en tu chat contigo mismo ("Tú"): ábrelo, mantén presionado el sticker y reenvíalo.',
+    waLinkTitle: 'vincular whatsapp', waLinkWarn: 'Soundstick se vincula como un dispositivo más, igual que WhatsApp Web. Solo envía a tu propio chat, nunca lee tus conversaciones y se desconecta al terminar. Es un método no oficial: WhatsApp podría limitar la cuenta si se abusa. Úsalo con calma, pocas veces al día.',
+    waCountry: 'código de país', waPhone: 'tu número', waPhoneHint: 'sin el código de país, ej. 3001234567', waGetCode: 'pedir código', waCodeIntro: 'En WhatsApp: Ajustes > Dispositivos vinculados > Vincular un dispositivo > Vincular con número de teléfono. Escribe este código:', waWaiting: 'esperando que lo escribas...', waLinkedOk: 'cuenta vinculada', waUnlink: 'desvincular', waCancel: 'cerrar', waWorking: 'conectando...',
+    waErrPairRate: 'WhatsApp limitó los intentos de vincular por ahora. No insistas: espera un par de horas y prueba una sola vez.', waErrPairWait: 'Espera 3 minutos antes de pedir otro código, para no activar el límite de WhatsApp.',
+    waErrGap: 'Espera unos segundos entre envíos.', waErrHour: 'Llegaste al límite por hora (15). Prueba más tarde para cuidar tu cuenta.', waErrNotLinked: 'Primero vincula tu cuenta.', waErrPhone: 'WhatsApp no aceptó el número. Revisa el código de país (Colombia es 57) y que sea el número de esta cuenta.', waErrNoAudio: 'Este clip no tiene sonido; agrega un audio.', waErrBig: 'El sticker pesa demasiado; prueba un clip más corto o más simple.', waErrConnect: 'No pude conectar con WhatsApp. Revisa tu internet.', waErrGeneric: 'No pude enviarlo. Inténtalo de nuevo.',
     helpLimits: 'Límites: video hasta {mb} MB, audio {am} MB, imagen {im} MB, clip final hasta {s} s.',
   },
   en: {
@@ -83,6 +88,11 @@ const dict = {
     helpNote: 'Sound stickers are rolling out gradually in WhatsApp. They started on Android; if you do not see the audio button, it has not reached you yet.',
     helpPrivacyTitle: 'your files',
     helpPrivacy: 'Everything is processed on your device. Nothing is uploaded to any server.',
+    waSend: 'send with sound to whatsapp', waSent: 'Done. It is in your chat with yourself ("You"): open it, long-press the sticker and forward it.',
+    waLinkTitle: 'link whatsapp', waLinkWarn: 'Soundstick links as one more device, like WhatsApp Web. It only sends to your own chat, never reads your conversations and disconnects when done. This is an unofficial method: WhatsApp could limit the account if abused. Use it calmly, a few times a day.',
+    waCountry: 'country code', waPhone: 'your number', waPhoneHint: 'without country code, e.g. 5551234567', waGetCode: 'get code', waCodeIntro: 'In WhatsApp: Settings > Linked devices > Link a device > Link with phone number. Enter this code:', waWaiting: 'waiting for you to enter it...', waLinkedOk: 'account linked', waUnlink: 'unlink', waCancel: 'close', waWorking: 'connecting...',
+    waErrPairRate: 'WhatsApp limited linking attempts for now. Do not insist: wait a couple of hours and try once.', waErrPairWait: 'Wait 3 minutes before asking for another code, to avoid WhatsApp limits.',
+    waErrGap: 'Wait a few seconds between sends.', waErrHour: 'You hit the hourly limit (15). Try later to protect your account.', waErrNotLinked: 'Link your account first.', waErrPhone: 'WhatsApp did not accept the number. Check the country code and that it is the number of this account.', waErrNoAudio: 'This clip has no sound; add an audio.', waErrBig: 'The sticker is too big; try a shorter or simpler clip.', waErrConnect: 'Could not reach WhatsApp. Check your internet.', waErrGeneric: 'Could not send it. Try again.',
     helpLimits: 'Limits: video up to {mb} MB, audio {am} MB, image {im} MB, final clip up to {s} s.',
   },
 } as const

@@ -83,7 +83,7 @@ export async function wholeFrameBlob(img: HTMLImageElement, bg: string): Promise
     ctx.filter = 'blur(14px)'
     ctx.drawImage(img, (size - w * cover) / 2 - 20, (size - h * cover) / 2 - 20, w * cover + 40, h * cover + 40)
     ctx.filter = 'none'
-  } else {
+  } else if (bg !== 'transparent') {
     ctx.fillStyle = bg
     ctx.fillRect(0, 0, size, size)
   }

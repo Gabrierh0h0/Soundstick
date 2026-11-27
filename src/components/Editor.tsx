@@ -1,7 +1,10 @@
 import { useCallback, useMemo, useRef, useState, type DragEvent } from 'react'
 import { useT, type Key } from '../lib/i18n'
 import { readAudio } from '../lib/audio'
-import { exportSticker, loadFFmpeg } from '../lib/ffmpeg'
+import { exportSticker, exportWaSticker, loadFFmpeg, type ExportOptions } from '../lib/ffmpeg'
+import { buildExif, injectExif, sha256b64 } from '../lib/wasticker'
+import { waAvailable, waErrorKey, waSend, waState } from '../lib/wa'
+import { WaLink } from './WaLink'
 import { LIMITS, MAX_AUDIO_BYTES, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES } from '../lib/limits'
 import { saveSticker } from '../lib/library'
 import { overlayBlob, overlayDataUrl, frameBlob, wholeFrameBlob } from '../lib/overlay'
@@ -233,6 +236,30 @@ export function Editor({ onHelp }: { onHelp: () => void }) {
     ].join('|')
   }
 
+  /** Opciones de exportación; `wa` deja el sobrante transparente en vez de rellenarlo. */
+  async function buildOpts(wa: boolean): Promise<ExportOptions | null> {
+    if (!visual) return null
+    const crop = framingToCrop(framing, visual.width, visual.height)
+    let vis: ExportOptions['visual']
+    if (visual.kind === 'video') vis = { kind: 'video', file: visual.file, start: vWin.start, crop, whole: fx.fit === 'whole' ? { bg: fx.bg } : undefined }
+    else {
+      const img = await loadImage(visual.url)
+      vis = { kind: 'image', frame: fx.fit === 'whole' ? await wholeFrameBlob(img, wa ? 'transparent' : fx.bg) : await frameBlob(img, crop.x + crop.side / 2, crop.y + crop.side / 2, crop.side) }
+    }
+    const text = textStyle ? await overlayBlob(textStyle) : null
+    return {
+      visual: vis,
+      audio: audio ? { file: audio.file, start: aWin.start } : null,
+      sourceLength: sourceLen,
+      speed: fx.speed,
+      fade: fx.fade,
+      volOrig: fx.volOrig,
+      volAdd: fx.volAdd,
+      overlay: text,
+      onProgress: setProgress,
+    }
+  }
+
   async function render(): Promise<Blob | null> {
     if (!visual || !canExport) return null
     const key = keyOf()
@@ -242,26 +269,10 @@ export function Editor({ onHelp }: { onHelp: () => void }) {
     setPhase('loading')
     try {
       await loadFFmpeg()
-      const crop = framingToCrop(framing, visual.width, visual.height)
-      let vis: Parameters<typeof exportSticker>[0]['visual']
-      if (visual.kind === 'video') vis = { kind: 'video', file: visual.file, start: vWin.start, crop, whole: fx.fit === 'whole' ? { bg: fx.bg } : undefined }
-      else {
-        const img = await loadImage(visual.url)
-        vis = { kind: 'image', frame: fx.fit === 'whole' ? await wholeFrameBlob(img, fx.bg) : await frameBlob(img, crop.x + crop.side / 2, crop.y + crop.side / 2, crop.side) }
-      }
-      const text = textStyle ? await overlayBlob(textStyle) : null
+      const opts = await buildOpts(false)
+      if (!opts) return null
       setPhase('exporting')
-      const blob = await exportSticker({
-        visual: vis,
-        audio: audio ? { file: audio.file, start: aWin.start } : null,
-        sourceLength: sourceLen,
-        speed: fx.speed,
-        fade: fx.fade,
-        volOrig: fx.volOrig,
-        volAdd: fx.volAdd,
-        overlay: text,
-        onProgress: setProgress,
-      })
+      const blob = await exportSticker(opts)
       cache.current = { key, blob, saved: false }
       return blob
     } catch {
@@ -302,6 +313,38 @@ export function Editor({ onHelp }: { onHelp: () => void }) {
       setArmedKey(keyOf())
       setMessage({ kind: 'info', text: t('shareAgain') })
     } else setMessage({ kind: 'info', text: t('saved', { mb: mb(blob.size) }) })
+  }
+
+  const [linking, setLinking] = useState(false)
+
+  /** Crea el sticker real (WebP + audio Opus con su hash) y lo envía al propio chat del usuario. */
+  async function sendWa() {
+    setMessage(null)
+    try {
+      const st = await waState()
+      if (st.state !== 'linked') {
+        setLinking(true)
+        return
+      }
+      pb.pause()
+      setProgress(0)
+      setPhase('loading')
+      await loadFFmpeg()
+      const opts = await buildOpts(true)
+      if (!opts) return
+      setPhase('exporting')
+      const r = await exportWaSticker(opts)
+      const exif = buildExif(await sha256b64(r.opus))
+      const webp = injectExif(r.webp, exif)
+      setPhase('loading')
+      await waSend(webp, r.opus, r.seconds)
+      setMessage({ kind: 'info', text: t('waSent') })
+    } catch (e) {
+      const key = waErrorKey(e)
+      setMessage({ kind: 'error', text: t(key as Key) })
+    } finally {
+      setPhase('idle')
+    }
   }
 
   const onDrop = (e: DragEvent) => {
@@ -419,6 +462,12 @@ export function Editor({ onHelp }: { onHelp: () => void }) {
         <button type="button" className="mg" disabled={!canExport || busy} onClick={onSave}>{t('save')}</button>
         <button type="button" className={`cy${ready ? ' ready' : ''}`} disabled={!canExport || busy} onClick={onShare}>{ready ? t('shareNow') : t('share')}</button>
       </div>
+      {waAvailable() && (
+        <div className="actions wa">
+          <button type="button" className="mg" disabled={!canExport || busy} onClick={sendWa}>{t('waSend')}</button>
+        </div>
+      )}
+      {linking && <WaLink onClose={() => setLinking(false)} onLinked={() => { setLinking(false); void sendWa() }} />}
 
       <div className="status" role="status" aria-live="polite">
         {busy && (

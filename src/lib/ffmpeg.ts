@@ -55,8 +55,27 @@ async function hasAudioStream(ff: FFmpeg, name: string): Promise<boolean> {
   return lines.some((l) => /Stream #.*Audio/.test(l))
 }
 
+/** Resultado del formato WhatsApp: sticker animado con transparencia + audio Opus aparte. */
+export type WaExport = { webp: Uint8Array; opus: Uint8Array; seconds: number }
+
 /** Construye el MP4 (H.264 + AAC, 512x512): recorte, mezcla de sonidos, velocidad, fundido y texto. */
 export async function exportSticker(o: ExportOptions): Promise<Blob> {
+  const r = await run(o, false)
+  return r as Blob
+}
+
+/**
+ * Construye el sticker para WhatsApp: WebP animado (con transparencia si el formato es "completo")
+ * y el audio en Opus mono. Necesita sonido; el EXIF con el hash se agrega después (wasticker.ts).
+ */
+export async function exportWaSticker(o: ExportOptions): Promise<WaExport> {
+  return (await run(o, true)) as WaExport
+}
+
+const WA_MAX_WEBP = 950_000
+const WA_QUALITIES = [60, 48, 38, 28, 20]
+
+async function run(o: ExportOptions, wa: boolean): Promise<Blob | WaExport> {
   const ff = await loadFFmpeg()
   const handler = ({ progress }: { progress: number }) => o.onProgress?.(Math.min(1, Math.max(0, progress)))
   const written: string[] = []
@@ -98,13 +117,17 @@ export async function exportSticker(o: ExportOptions): Promise<Blob> {
 
     // ── Video ──
     const size = LIMITS.outputSize
+    const fps = wa ? 15 : 30
+    const pf = wa ? 'rgba' : 'yuv420p'
     const chain: string[] = []
     const src = `[${idx.visual}:v]`
     if (o.visual.kind === 'video' && o.visual.whole) {
       // Todo el video dentro del cuadrado; lo que sobra se rellena con un color o con el mismo video borroso.
       const fg = `scale=${size}:${size}:force_original_aspect_ratio=decrease:flags=lanczos`
       const bg = o.visual.whole.bg
-      if (bg === 'blur') {
+      if (wa) {
+        chain.push(`${src}${fg},format=rgba,pad=${size}:${size}:(ow-iw)/2:(oh-ih)/2:color=black@0,setsar=1,fps=${fps},format=${pf}[v0]`)
+      } else if (bg === 'blur') {
         chain.push(`${src}split=2[sa][sb]`)
         chain.push(`[sa]scale=${size}:${size}:force_original_aspect_ratio=increase,crop=${size}:${size},boxblur=16:2[sbg]`)
         chain.push(`[sb]${fg}[sfg]`)
@@ -117,16 +140,19 @@ export async function exportSticker(o: ExportOptions): Promise<Blob> {
         o.visual.kind === 'video'
           ? `crop=${even(o.visual.crop.side)}:${even(o.visual.crop.side)}:${Math.round(o.visual.crop.x)}:${Math.round(o.visual.crop.y)},scale=${size}:${size}:flags=lanczos`
           : `scale=${size}:${size}`
-      chain.push(`${src}${base},setsar=1,fps=30,format=yuv420p[v0]`)
+      chain.push(`${src}${base},setsar=1,fps=${fps},format=${pf}[v0]`)
     }
     let v = 'v0'
     if (o.overlay) {
-      chain.push(`[${v}][${idx.overlay}:v]overlay=0:0:format=auto,format=yuv420p[v1]`)
+      chain.push(`[${v}][${idx.overlay}:v]overlay=0:0:format=auto,format=${pf}[v1]`)
       v = 'v1'
     }
     const vFx: string[] = []
     if (speed !== 1) vFx.push(`setpts=PTS/${num(speed)}`)
-    if (fade > 0) vFx.push(`fade=t=in:st=0:d=${num(fade)}`, `fade=t=out:st=${num(outLen - fade)}:d=${num(fade)}`)
+    if (fade > 0) {
+      const al = wa ? ':alpha=1' : ''
+      vFx.push(`fade=t=in:st=0:d=${num(fade)}${al}`, `fade=t=out:st=${num(outLen - fade)}:d=${num(fade)}${al}`)
+    }
     chain.push(`[${v}]${vFx.length ? vFx.join(',') : 'null'}[vout]`)
 
     // ── Audio ──
@@ -153,6 +179,29 @@ export async function exportSticker(o: ExportOptions): Promise<Blob> {
       chain.push(`[${a}]${aFx.join(',')}[aout]`)
     }
 
+    if (wa) {
+      if (!hasAudio) throw new Error('NO_AUDIO')
+      const seconds = Math.min(10, Math.max(1, Math.ceil(outLen)))
+      let webp: Uint8Array | null = null
+      for (const q of WA_QUALITIES) {
+        const c = await ff.exec([
+          ...args,
+          '-filter_complex', chain.join(';'),
+          '-map', '[vout]', '-an', '-c:v', 'libwebp_anim', '-lossless', '0', '-q:v', String(q),
+          '-compression_level', '5', '-loop', '0', '-t', num(outLen), '-y', 'out.webp',
+          '-map', '[aout]', '-vn', '-c:a', 'libopus', '-b:a', '32k', '-ac', '1', '-ar', '48000',
+          '-t', num(outLen), '-y', 'out.ogg',
+        ])
+        if (c !== 0) throw new Error(`ffmpeg exit ${c}`)
+        webp = (await ff.readFile('out.webp')) as Uint8Array
+        if (webp.length <= WA_MAX_WEBP) break
+      }
+      if (!webp || webp.length > WA_MAX_WEBP) throw new Error('TOO_BIG')
+      const opus = (await ff.readFile('out.ogg')) as Uint8Array
+      o.onProgress?.(1)
+      return { webp: webp.slice(), opus: opus.slice(), seconds }
+    }
+
     const code = await ff.exec([
       ...args,
       '-filter_complex', chain.join(';'),
@@ -168,6 +217,6 @@ export async function exportSticker(o: ExportOptions): Promise<Blob> {
     return new Blob([data.slice().buffer], { type: 'video/mp4' })
   } finally {
     ff.off('progress', handler)
-    for (const name of [...written, 'out.mp4']) await ff.deleteFile(name).catch(() => {})
+    for (const name of [...written, 'out.mp4', 'out.webp', 'out.ogg']) await ff.deleteFile(name).catch(() => {})
   }
 }

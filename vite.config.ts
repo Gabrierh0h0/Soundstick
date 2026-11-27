@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      disable: process.env.NATIVE === '1', // la app Android no usa service worker
       registerType: 'autoUpdate',
       manifest: {
         name: 'Soundstick',
