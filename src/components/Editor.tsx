@@ -7,8 +7,8 @@ import { waAvailable, waErrorKey, waSend, waState } from '../lib/wa'
 import { WaLink } from './WaLink'
 import { LIMITS, MAX_AUDIO_BYTES, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES } from '../lib/limits'
 import { saveSticker } from '../lib/library'
-import { overlayBlob, overlayDataUrl, frameBlob, wholeFrameBlob } from '../lib/overlay'
-import { DEFAULT_FX, defaultOrigVolume, needsAudio, type AudioClip, type Effects, type Mode, type Visual } from '../lib/project'
+import { overlayBlob, overlayDataUrl, stickerFrameBlob } from '../lib/overlay'
+import { DEFAULT_FX, boxOf, defaultOrigVolume, needsAudio, type AudioClip, type Effects, type Mode, type Visual } from '../lib/project'
 import { download, shareFile } from '../lib/share'
 import { clampWindow, fmt, initialWindow, type Handle } from '../lib/trim'
 import { usePlayback } from '../hooks/usePlayback'
@@ -196,6 +196,10 @@ export function Editor({ onHelp }: { onHelp: () => void }) {
   function onFx(patch: Partial<Effects>) {
     touch()
     setFx((f) => ({ ...f, ...patch }))
+    if (patch.shape && visual) {
+      const b = boxOf(patch.shape)
+      setFraming((fr) => clampFraming(fr, visual.width, visual.height, b.w / b.h))
+    }
     if (patch.speed !== undefined) {
       const limit = LIMITS.maxSeconds * patch.speed
       setVWin((w) => clampWindow(w, limit))
@@ -225,26 +229,28 @@ export function Editor({ onHelp }: { onHelp: () => void }) {
     touch()
   }
 
+  const box = boxOf(fx.shape)
+  const ar = box.w / box.h
   const canExport = !!visual && (!needsAudio(mode) || !!audio) && sourceLen > 0
 
   const keyOf = () => {
     if (!visual || !canExport) return ''
-    const c = framingToCrop(framing, visual.width, visual.height)
+    const c = framingToCrop(framing, visual.width, visual.height, ar)
     return [
       mode, visual.url, audio?.url ?? '', vWin.start.toFixed(2), vWin.end.toFixed(2), aWin.start.toFixed(2), aWin.end.toFixed(2),
-      Math.round(c.x), Math.round(c.y), Math.round(c.side), fx.speed, fx.fade, fx.volOrig, fx.volAdd, fx.text, fx.textPos, fx.textColor, fx.textSize, fx.fit, fx.bg,
+      Math.round(c.x), Math.round(c.y), Math.round(c.w), Math.round(c.h), fx.speed, fx.fade, fx.volOrig, fx.volAdd, fx.text, fx.textPos, fx.textColor, fx.textSize, fx.fit, fx.bg, fx.shape,
     ].join('|')
   }
 
   /** Opciones de exportación; `wa` deja el sobrante transparente en vez de rellenarlo. */
-  async function buildOpts(wa: boolean): Promise<ExportOptions | null> {
+  async function buildOpts(): Promise<ExportOptions | null> {
     if (!visual) return null
-    const crop = framingToCrop(framing, visual.width, visual.height)
+    const crop = framingToCrop(framing, visual.width, visual.height, ar)
     let vis: ExportOptions['visual']
-    if (visual.kind === 'video') vis = { kind: 'video', file: visual.file, start: vWin.start, crop, whole: fx.fit === 'whole' ? { bg: fx.bg } : undefined }
+    if (visual.kind === 'video') vis = { kind: 'video', file: visual.file, start: vWin.start, crop, whole: fx.fit === 'whole', box, bg: fx.bg }
     else {
       const img = await loadImage(visual.url)
-      vis = { kind: 'image', frame: fx.fit === 'whole' ? await wholeFrameBlob(img, wa ? 'transparent' : fx.bg) : await frameBlob(img, crop.x + crop.side / 2, crop.y + crop.side / 2, crop.side) }
+      vis = { kind: 'image', frame: await stickerFrameBlob(img, { crop, whole: fx.fit === 'whole', box, bg: fx.bg }) }
     }
     const text = textStyle ? await overlayBlob(textStyle) : null
     return {
@@ -269,7 +275,7 @@ export function Editor({ onHelp }: { onHelp: () => void }) {
     setPhase('loading')
     try {
       await loadFFmpeg()
-      const opts = await buildOpts(false)
+      const opts = await buildOpts()
       if (!opts) return null
       setPhase('exporting')
       const blob = await exportSticker(opts)
@@ -330,18 +336,20 @@ export function Editor({ onHelp }: { onHelp: () => void }) {
       setProgress(0)
       setPhase('loading')
       await loadFFmpeg()
-      const opts = await buildOpts(true)
+      const opts = await buildOpts()
       if (!opts) return
       setPhase('exporting')
       const r = await exportWaSticker(opts)
       const exif = buildExif(await sha256b64(r.opus))
-      const webp = injectExif(r.webp, exif)
+      const webp = injectExif(r.webp, exif, r.seconds * 1000)
       setPhase('loading')
       await waSend(webp, r.opus, r.seconds)
       setMessage({ kind: 'info', text: t('waSent') })
     } catch (e) {
       const key = waErrorKey(e)
-      setMessage({ kind: 'error', text: t(key as Key) })
+      console.error('wa-send', e)
+      const detail = String((e as { message?: string })?.message ?? e).slice(0, 80)
+      setMessage({ kind: 'error', text: key === 'waErrGeneric' ? `${t(key as Key)} (${detail})` : t(key as Key) })
     } finally {
       setPhase('idle')
     }
@@ -401,6 +409,7 @@ export function Editor({ onHelp }: { onHelp: () => void }) {
             tags={tags}
             fit={fx.fit}
             bg={fx.bg}
+            box={box}
             overlay={overlay}
           />
           {fx.fit === 'fill' && <label className="zoom">
@@ -411,7 +420,7 @@ export function Editor({ onHelp }: { onHelp: () => void }) {
               max={4}
               step={0.05}
               value={framing.zoom}
-              onChange={(e) => { setFraming(clampFraming({ ...framing, zoom: Number(e.target.value) }, visual.width, visual.height)); touch() }}
+              onChange={(e) => { setFraming(clampFraming({ ...framing, zoom: Number(e.target.value) }, visual.width, visual.height, ar)); touch() }}
             />
           </label>}
         </>

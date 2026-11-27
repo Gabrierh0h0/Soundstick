@@ -5,14 +5,20 @@ import { clamp } from '../lib/trim'
 
 export type Framing = { cx: number; cy: number; zoom: number }
 
-export function clampFraming(f: Framing, w: number, h: number): Framing {
-  const side = Math.min(w, h) / f.zoom
-  return { zoom: f.zoom, cx: clamp(f.cx, side / 2, w - side / 2), cy: clamp(f.cy, side / 2, h - side / 2) }
+/** Tamaño del recorte para una forma de proporción `ar` (ancho/alto): el rectángulo más grande que cabe, dividido por el zoom. */
+export function cropSize(w: number, h: number, ar: number, zoom: number) {
+  const cw = (w / h > ar ? h * ar : w) / zoom
+  return { cw, ch: cw / ar }
 }
 
-export function framingToCrop(f: Framing, w: number, h: number): Crop {
-  const side = Math.min(w, h) / f.zoom
-  return { side, x: clamp(f.cx - side / 2, 0, w - side), y: clamp(f.cy - side / 2, 0, h - side) }
+export function clampFraming(f: Framing, w: number, h: number, ar = 1): Framing {
+  const { cw, ch } = cropSize(w, h, ar, f.zoom)
+  return { zoom: f.zoom, cx: clamp(f.cx, cw / 2, w - cw / 2), cy: clamp(f.cy, ch / 2, h - ch / 2) }
+}
+
+export function framingToCrop(f: Framing, w: number, h: number, ar = 1): Crop {
+  const { cw, ch } = cropSize(w, h, ar, f.zoom)
+  return { w: cw, h: ch, x: clamp(f.cx - cw / 2, 0, w - cw), y: clamp(f.cy - ch / 2, 0, h - ch) }
 }
 
 type Props = {
@@ -30,18 +36,20 @@ type Props = {
   tags: { tl: string; tr: string; bl: string }
   fit: 'fill' | 'whole'
   bg: string
+  /** Caja de la forma dentro del lienzo de 512. */
+  box: { w: number; h: number }
   /** Texto superpuesto (PNG transparente) para ver cómo quedará. */
   overlay: string | null
 }
 
-export function Preview({ kind, url, width, height, framing, onFraming, videoRef, playing, canPlay, onTogglePlay, tags, overlay, fit, bg }: Props) {
+export function Preview({ kind, url, width, height, framing, onFraming, videoRef, playing, canPlay, onTogglePlay, tags, overlay, fit, bg, box }: Props) {
   const { t } = useT()
-  const box = useRef<HTMLDivElement>(null)
+  const boxRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState(354)
   const drag = useRef<{ x: number; y: number; cx: number; cy: number } | null>(null)
 
   useEffect(() => {
-    const el = box.current
+    const el = boxRef.current
     if (!el) return
     const ro = new ResizeObserver(() => setSize(el.clientWidth))
     ro.observe(el)
@@ -49,23 +57,28 @@ export function Preview({ kind, url, width, height, framing, onFraming, videoRef
     return () => ro.disconnect()
   }, [])
 
-  const side = Math.min(width, height) / framing.zoom
-  const scale = size / side
+  // La caja de la forma dentro del escenario cuadrado; fuera de ella el sticker queda transparente.
+  const bw = (box.w / 512) * size
+  const bh = (box.h / 512) * size
+  const ar = box.w / box.h
+  const { cw } = cropSize(width, height, ar, framing.zoom)
+  const scale = bw / cw
   const style = {
     width: width * scale,
     height: height * scale,
-    left: size / 2 - framing.cx * scale,
-    top: size / 2 - framing.cy * scale,
+    left: bw / 2 - framing.cx * scale,
+    top: bh / 2 - framing.cy * scale,
   }
 
   const whole = fit === 'whole'
-  const place = (s: number) => ({ width: width * s, height: height * s, left: (size - width * s) / 2, top: (size - height * s) / 2 })
-  const mainStyle = whole ? place(size / Math.max(width, height)) : style
-  const blurStyle = { ...place(size / Math.min(width, height)), filter: 'blur(14px)', transform: 'scale(1.15)' }
+  const place = (s: number, bwid: number, bhei: number) => ({ width: width * s, height: height * s, left: (bwid - width * s) / 2, top: (bhei - height * s) / 2 })
+  const mainStyle = whole ? place(Math.min(bw / width, bh / height), bw, bh) : style
+  const blurStyle = { ...place(size / Math.min(width, height), size, size), filter: 'blur(14px)', transform: 'scale(1.15)' }
+  const boxStyle = { left: (size - bw) / 2, top: (size - bh) / 2, width: bw, height: bh }
   const bgVideo = useRef<HTMLVideoElement>(null)
 
   // El fondo borroso de un video es una copia muda que sigue al video principal.
-  const wantBlur = whole && bg === 'blur'
+  const wantBlur = bg === 'blur'
   useEffect(() => {
     if (!wantBlur || kind !== 'video') return
     let raf = 0
@@ -90,16 +103,16 @@ export function Preview({ kind, url, width, height, framing, onFraming, videoRef
   const move = (e: PointerEvent<HTMLDivElement>) => {
     const d = drag.current
     if (!d) return
-    onFraming(clampFraming({ zoom: framing.zoom, cx: d.cx - (e.clientX - d.x) / scale, cy: d.cy - (e.clientY - d.y) / scale }, width, height))
+    onFraming(clampFraming({ zoom: framing.zoom, cx: d.cx - (e.clientX - d.x) / scale, cy: d.cy - (e.clientY - d.y) / scale }, width, height, ar))
   }
   const up = () => {
     drag.current = null
   }
 
   return (
-    <div className="stage" ref={box} style={whole && bg !== 'blur' ? { background: bg } : undefined}>
+    <div className="stage" ref={boxRef} style={bg !== 'transparent' && bg !== 'blur' ? { background: bg } : undefined}>
       {wantBlur && (kind === 'video' ? <video ref={bgVideo} src={url} muted playsInline preload="auto" style={blurStyle} aria-hidden="true" /> : <img src={url} alt="" draggable={false} style={blurStyle} />)}
-      <div className={`stage-pan${whole ? ' still' : ''}`} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} title={t('framingHint')}>
+      <div className={`stage-pan${whole ? ' still' : ''}`} style={boxStyle} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} title={t('framingHint')}>
         {kind === 'video' ? (
           <video ref={videoRef} src={url} playsInline preload="auto" style={mainStyle} />
         ) : (

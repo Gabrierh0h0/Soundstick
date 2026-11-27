@@ -1,4 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { Browser } from '@capacitor/browser'
+import { Capacitor } from '@capacitor/core'
+import { APK_URL, APP_VERSION, checkUpdate, type Update } from './lib/update'
 import { Editor } from './components/Editor'
 import { Help } from './components/Help'
 import { Library } from './components/Library'
@@ -15,6 +18,9 @@ const VIEWS: { id: View; label: Key }[] = [
 function Shell() {
   const { t, lang, setLang } = useT()
   const [view, setView] = useState<View>('create')
+  const [update, setUpdate] = useState<Update | null>(null)
+  useEffect(() => { void checkUpdate().then(setUpdate) }, [])
+  const native = Capacitor.isNativePlatform()
 
   return (
     <div className="app">
@@ -27,6 +33,13 @@ function Shell() {
         <header className="banner">
           <h1 className="logo" aria-label="soundstick">soundstick</h1>
         </header>
+        {update && (
+          <div className="update" role="status">
+            <span>{t('updAvail', { v: update.version })}</span>
+            <button type="button" onClick={() => void Browser.open({ url: update.url })}>{t('updGet')}</button>
+            <button type="button" onClick={() => setUpdate(null)}>{t('updLater')}</button>
+          </div>
+        )}
         <div className="tick" aria-hidden="true"><span>{t('ticker')}</span></div>
         <nav className="pivot" aria-label="Secciones">
           {VIEWS.map((v) => (
@@ -45,7 +58,13 @@ function Shell() {
         {view === 'library' && <Library />}
         {view === 'help' && <Help />}
         </div>
-        <footer className="statusbar"><span>{t('ready')}</span><span>soundstick 1.0</span></footer>
+        {!native && (
+          <div className="download">
+            <a href={APK_URL} download>{t('dlAndroid')}</a>
+            <small>{t('dlHint')}</small>
+          </div>
+        )}
+        <footer className="statusbar"><span>{t('ready')}</span><span>soundstick {APP_VERSION}</span></footer>
       </div>
     </div>
   )

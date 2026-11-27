@@ -58,36 +58,37 @@ export async function overlayBlob(style: TextStyle): Promise<Blob | null> {
   return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
 }
 
-/** Dibuja el recorte cuadrado de una imagen en 512x512 (fondo negro) y lo devuelve como PNG. */
-export async function frameBlob(img: HTMLImageElement, cx: number, cy: number, side: number): Promise<Blob> {
-  const size = LIMITS.outputSize
-  const canvas = Object.assign(document.createElement('canvas'), { width: size, height: size })
-  const ctx = canvas.getContext('2d')!
-  ctx.fillStyle = '#000'
-  ctx.fillRect(0, 0, size, size)
-  ctx.imageSmoothingQuality = 'high'
-  ctx.drawImage(img, cx - side / 2, cy - side / 2, side, side, 0, 0, size, size)
-  return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('canvas'))), 'image/png'))
-}
-
-/** Cuadro 512x512 con la imagen completa y el sobrante relleno (borroso o de un color). */
-export async function wholeFrameBlob(img: HTMLImageElement, bg: string): Promise<Blob> {
+/**
+ * Cuadro 512x512 para una imagen fija: la imagen (recortada o completa) cae dentro de la caja de la forma elegida
+ * y el resto del lienzo queda transparente, borroso o de un color.
+ */
+export async function stickerFrameBlob(
+  img: HTMLImageElement,
+  o: { crop: { x: number; y: number; w: number; h: number }; whole: boolean; box: { w: number; h: number }; bg: string },
+): Promise<Blob> {
   const size = LIMITS.outputSize
   const canvas = Object.assign(document.createElement('canvas'), { width: size, height: size })
   const ctx = canvas.getContext('2d')!
   ctx.imageSmoothingQuality = 'high'
   const w = img.naturalWidth
   const h = img.naturalHeight
-  if (bg === 'blur') {
+  if (o.bg === 'blur') {
     const cover = size / Math.min(w, h)
     ctx.filter = 'blur(14px)'
     ctx.drawImage(img, (size - w * cover) / 2 - 20, (size - h * cover) / 2 - 20, w * cover + 40, h * cover + 40)
     ctx.filter = 'none'
-  } else if (bg !== 'transparent') {
-    ctx.fillStyle = bg
+  } else if (o.bg !== 'transparent') {
+    ctx.fillStyle = o.bg
     ctx.fillRect(0, 0, size, size)
   }
-  const fit = size / Math.max(w, h)
-  ctx.drawImage(img, (size - w * fit) / 2, (size - h * fit) / 2, w * fit, h * fit)
+  const left = (size - o.box.w) / 2
+  const top = (size - o.box.h) / 2
+  if (o.whole) {
+    const fit = Math.min(o.box.w / w, o.box.h / h)
+    ctx.drawImage(img, (size - w * fit) / 2, (size - h * fit) / 2, w * fit, h * fit)
+  } else {
+    const c = o.crop
+    ctx.drawImage(img, c.x, c.y, c.w, c.h, left, top, o.box.w, o.box.h)
+  }
   return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('canvas'))), 'image/png'))
 }

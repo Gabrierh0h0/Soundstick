@@ -4,6 +4,7 @@ export type Lang = 'es' | 'en'
 
 export const dict = {
   es: {
+    updAvail: 'hay una versión nueva ({v})', updGet: 'descargar', updLater: 'luego', dlAndroid: 'descargar para android', dlHint: 'App Android con envío directo a WhatsApp. Es un cliente no oficial: úsala con una cuenta que puedas arriesgar.',
     navCreate: 'crear', navLibrary: 'biblioteca', navHelp: 'ayuda',
     srcVideo: 'video + sonido', srcVideoAudio: 'video + audio', srcImageAudio: 'imagen + audio', srcVoice: 'voz',
     pickVideo: 'elige un video', pickImage: 'elige una imagen', pickVisualVoice: 'elige imagen o video',
@@ -28,7 +29,7 @@ export const dict = {
     errAudioDecode: 'No pude leer este audio. Prueba con MP3, M4A o WAV.',
     errMic: 'No pude usar el micrófono. Revisa el permiso del navegador.',
     errExport: 'No pude exportar este clip. Prueba con uno más corto.',
-    toolVolume: 'volumen', toolSpeed: 'velocidad', toolFade: 'fundido', toolText: 'texto', toolFormat: 'formato', fitFill: 'llenar', fitWhole: 'completo', fitBg: 'fondo', bgBlur: 'borroso', colBlack: 'negro', fitHint: 'Llenar recorta para cubrir el cuadrado. Completo muestra todo y rellena lo que sobra: el MP4 no guarda transparencia.',
+    toolVolume: 'volumen', toolSpeed: 'velocidad', toolFade: 'fundido', toolText: 'texto', toolFormat: 'formato', fitFill: 'llenar', fitWhole: 'completo', fitBg: 'fondo', bgBlur: 'borroso', colBlack: 'negro', shapeLabel: 'forma', bgClear: 'transparente', fitHint: 'La forma define las proporciones. Llenar recorta para cubrirla; Completo muestra todo. Lo que rodea queda transparente en WhatsApp (el MP4 no guarda transparencia y lo rellena de negro).',
     volOriginal: 'sonido del video', volAdded: 'audio añadido', volVoice: 'tu voz', volAudio: 'audio',
     fadeOff: 'ninguno', fadeHint: 'entra y sale suave', speedHint: 'el clip final dura {s} s',
     textPlaceholder: 'escribe algo o un emoji', textPos: 'posición', posTop: 'arriba', posCenter: 'centro', posBottom: 'abajo', textColor: 'color', textSize: 'tamaño',
@@ -50,6 +51,7 @@ export const dict = {
     helpLimits: 'Límites: video hasta {mb} MB, audio {am} MB, imagen {im} MB, clip final hasta {s} s.',
   },
   en: {
+    updAvail: 'new version available ({v})', updGet: 'download', updLater: 'later', dlAndroid: 'download for android', dlHint: 'Android app that sends straight to WhatsApp. It is an unofficial client: use an account you can afford to risk.',
     navCreate: 'create', navLibrary: 'library', navHelp: 'help',
     srcVideo: 'video + sound', srcVideoAudio: 'video + audio', srcImageAudio: 'image + audio', srcVoice: 'voice',
     pickVideo: 'pick a video', pickImage: 'pick an image', pickVisualVoice: 'pick image or video',
@@ -74,7 +76,7 @@ export const dict = {
     errAudioDecode: "I couldn't read this audio. Try MP3, M4A or WAV.",
     errMic: "I couldn't use the microphone. Check the browser permission.",
     errExport: "I couldn't export this clip. Try a shorter one.",
-    toolVolume: 'volume', toolSpeed: 'speed', toolFade: 'fade', toolText: 'text', toolFormat: 'format', fitFill: 'fill', fitWhole: 'whole', fitBg: 'background', bgBlur: 'blur', colBlack: 'black', fitHint: "Fill crops to cover the square. Whole shows everything and fills the leftover area: MP4 can't keep transparency.",
+    toolVolume: 'volume', toolSpeed: 'speed', toolFade: 'fade', toolText: 'text', toolFormat: 'format', fitFill: 'fill', fitWhole: 'whole', fitBg: 'background', bgBlur: 'blur', colBlack: 'black', shapeLabel: 'shape', bgClear: 'transparent', fitHint: "The shape sets the proportions. Fill crops to cover it; Whole shows everything. The surroundings stay transparent on WhatsApp (MP4 can't keep transparency, so it fills them black).",
     volOriginal: 'video sound', volAdded: 'added audio', volVoice: 'your voice', volAudio: 'audio',
     fadeOff: 'none', fadeHint: 'fades in and out', speedHint: 'the final clip lasts {s} s',
     textPlaceholder: 'write something or an emoji', textPos: 'position', posTop: 'top', posCenter: 'center', posBottom: 'bottom', textColor: 'color', textSize: 'size',

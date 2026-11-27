@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useT, type Key } from '../lib/i18n'
 import { LIMITS } from '../lib/limits'
-import { BG_COLORS, TEXT_COLORS, type Effects, type TextPos } from '../lib/project'
+import { BG_COLORS, SHAPES, TEXT_COLORS, type Effects, type TextPos } from '../lib/project'
 import { fmt } from '../lib/trim'
 import { Planet } from './Icons'
 
@@ -53,7 +53,7 @@ export function Tools({ onHelp, fx, onFx, showOrig, showAdded, addedLabel, outLe
     { id: 'vol', label: 'toolVolume', value: showOrig && showAdded ? `${Math.round(fx.volOrig * 100)}/${Math.round(fx.volAdd * 100)}` : pct(showOrig ? fx.volOrig : fx.volAdd), on: false },
     { id: 'speed', label: 'toolSpeed', value: `${fx.speed}x`, on: fx.speed !== 1 },
     { id: 'fade', label: 'toolFade', value: fx.fade > 0 ? `${fx.fade} s` : t('fadeOff'), on: fx.fade > 0 },
-    { id: 'format', label: 'toolFormat', value: t(fx.fit === 'whole' ? 'fitWhole' : 'fitFill'), on: fx.fit === 'whole' },
+    { id: 'format', label: 'toolFormat', value: `${SHAPES.find((x) => x.id === fx.shape)?.ratio ?? '1:1'} ${t(fx.fit === 'whole' ? 'fitWhole' : 'fitFill')}`, on: fx.fit === 'whole' || fx.shape !== 'square' },
     { id: 'text', label: 'toolText', value: fx.text.trim() ? Array.from(fx.text.trim()).slice(0, 10).join('') : t('fadeOff'), on: !!fx.text.trim() },
   ]
 
@@ -79,21 +79,27 @@ export function Tools({ onHelp, fx, onFx, showOrig, showAdded, addedLabel, outLe
           )}
           {id === 'format' && (
             <>
+              <span className="mini">{t('shapeLabel')}</span>
+              <div className="shapes" role="group" aria-label={t('shapeLabel')}>
+                {SHAPES.map((sh) => (
+                  <button key={sh.id} type="button" aria-pressed={fx.shape === sh.id} onClick={() => onFx({ shape: sh.id })}>
+                    <i style={{ '--sw': (sh.w / 512) * 26, '--sh': (sh.h / 512) * 26 } as React.CSSProperties} />
+                    {sh.ratio}
+                  </button>
+                ))}
+              </div>
               <div className="seg two" role="group" aria-label={t('toolFormat')}>
                 <button type="button" aria-pressed={fx.fit === 'fill'} onClick={() => onFx({ fit: 'fill' })}>{t('fitFill')}</button>
                 <button type="button" aria-pressed={fx.fit === 'whole'} onClick={() => onFx({ fit: 'whole' })}>{t('fitWhole')}</button>
               </div>
-              {fx.fit === 'whole' && (
-                <>
-                  <span className="mini">{t('fitBg')}</span>
-                  <div className="swatches" role="group" aria-label={t('fitBg')}>
-                    <button type="button" className="blur" aria-label={t('bgBlur')} aria-pressed={fx.bg === 'blur'} onClick={() => onFx({ bg: 'blur' })}>{t('bgBlur')}</button>
-                    {BG_COLORS.map((c) => (
-                      <button key={c} type="button" aria-label={t(BG_NAMES[c])} aria-pressed={fx.bg === c} style={{ background: c }} onClick={() => onFx({ bg: c })} />
-                    ))}
-                  </div>
-                </>
-              )}
+              <span className="mini">{t('fitBg')}</span>
+              <div className="swatches" role="group" aria-label={t('fitBg')}>
+                <button type="button" className="clear" aria-label={t('bgClear')} aria-pressed={fx.bg === 'transparent'} onClick={() => onFx({ bg: 'transparent' })} />
+                <button type="button" className="blur" aria-label={t('bgBlur')} aria-pressed={fx.bg === 'blur'} onClick={() => onFx({ bg: 'blur' })}>{t('bgBlur')}</button>
+                {BG_COLORS.map((c) => (
+                  <button key={c} type="button" aria-label={t(BG_NAMES[c])} aria-pressed={fx.bg === c} style={{ background: c }} onClick={() => onFx({ bg: c })} />
+                ))}
+              </div>
               <p className="hint">{t('fitHint')}</p>
             </>
           )}

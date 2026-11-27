@@ -8,6 +8,18 @@ export type AudioClip = { kind: 'file' | 'voice'; file: File; url: string; durat
 
 export type TextPos = 'top' | 'center' | 'bottom'
 
+/** Formas del sticker dentro del lienzo de 512x512; lo que sobra queda transparente (o con el fondo elegido). */
+export type Shape = 'square' | 'wide' | 'tall' | 'photo' | 'portrait'
+export const SHAPES: { id: Shape; w: number; h: number; ratio: string }[] = [
+  { id: 'square', w: 512, h: 512, ratio: '1:1' },
+  { id: 'wide', w: 512, h: 288, ratio: '16:9' },
+  { id: 'tall', w: 288, h: 512, ratio: '9:16' },
+  { id: 'photo', w: 512, h: 384, ratio: '4:3' },
+  { id: 'portrait', w: 384, h: 512, ratio: '3:4' },
+]
+/** Medidas de la caja donde cae la imagen dentro del lienzo. */
+export const boxOf = (shape: Shape) => SHAPES.find((s) => s.id === shape) ?? SHAPES[0]
+
 export type Effects = {
   speed: number
   fade: number
@@ -19,9 +31,11 @@ export type Effects = {
   textPos: TextPos
   textColor: string
   textSize: number
-  /** 'fill' llena el cuadrado recortando; 'whole' muestra todo y rellena lo que sobra. */
+  /** Forma del sticker dentro del lienzo cuadrado. */
+  shape: Shape
+  /** 'fill' llena la forma recortando; 'whole' muestra todo y deja el sobrante. */
   fit: 'fill' | 'whole'
-  /** Relleno cuando fit es 'whole': 'blur' (el mismo contenido borroso) o un color. */
+  /** Lo que rodea la imagen: 'transparent', 'blur' (el mismo contenido borroso) o un color. */
   bg: string
 }
 
@@ -34,8 +48,9 @@ export const DEFAULT_FX: Effects = {
   textPos: 'bottom',
   textColor: '#ffffff',
   textSize: 64,
+  shape: 'square',
   fit: 'fill',
-  bg: 'blur',
+  bg: 'transparent',
 }
 
 export const needsAudio = (m: Mode) => m !== 'video'
